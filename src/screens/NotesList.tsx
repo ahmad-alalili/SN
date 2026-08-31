@@ -24,10 +24,12 @@ export default function NotesList() {
   const trainees = useLiveQuery(() => db.trainees.where('trainerId').equals(t.id).toArray(), [t.id]) ?? [];
   const courses = useLiveQuery(() => db.courses.where('trainerId').equals(t.id).toArray(), [t.id]) ?? [];
   const categories = useLiveQuery(() => db.categories.where('trainerId').equals(t.id).toArray(), [t.id]) ?? [];
+  const academicYears = useLiveQuery(() => db.academicYears.where('trainerId').equals(t.id).toArray(), [t.id]) ?? [];
 
   const traineeById = useMemo(() => new Map(trainees.map(x => [x.id!, x])), [trainees]);
   const courseById = useMemo(() => new Map(courses.map(c => [c.id!, c])), [courses]);
   const catById = useMemo(() => new Map(categories.map(c => [c.id!, c])), [categories]);
+  const academicYearById = useMemo(() => new Map(academicYears.map(year => [year.id!, year])), [academicYears]);
   const catSeverityMap = useMemo(
     () => new Map(categories.map(c => [c.id!, c.severity as '' | 'yellow' | 'orange' | 'red' | undefined])),
     [categories]
@@ -164,7 +166,7 @@ export default function NotesList() {
             )}
             {!!filtered.length && (
               <button className="underline font-bold hover:text-brand-700"
-                onClick={() => exportNotesToExcel(filtered, { traineeById, courseById, catById }, toast)}>
+                onClick={() => exportNotesToExcel(filtered, { traineeById, courseById, catById, academicYearById }, toast)}>
                 ⬇️ تصدير Excel
               </button>
             )}
@@ -191,6 +193,7 @@ export default function NotesList() {
             const co = courseById.get(n.courseId);
             const mainCat = catById.get(n.categoryId);
             const subCat = n.subcategoryId ? catById.get(n.subcategoryId) : null;
+            const academicYear = n.academicYearId ? academicYearById.get(n.academicYearId) : null;
             // الخطورة الفعّالة: الخاصة بالملاحظة أولاً، ثم تصنيفها
             const sev = (n.severity || mainCat?.severity || subCat?.severity || '') as string;
             const isDue = n.remind && !n.remindDone && !!n.dueAt && n.dueAt <= Date.now();
@@ -245,6 +248,9 @@ export default function NotesList() {
                         )}
                         🏷️ {mainCat?.name}{subCat ? ` ↳ ${subCat.name}` : ''}
                       </span>
+                    )}
+                    {academicYear && (
+                      <span className="chip !bg-violet-100 !text-violet-800 whitespace-nowrap">🗓️ {academicYear.name}</span>
                     )}
                     {(isDue || isUpcoming) && (
                       <span className={`chip whitespace-nowrap ${isDue ? '!bg-red-100 !text-red-700 animate-pulse' : '!bg-amber-100 !text-amber-700'}`}>

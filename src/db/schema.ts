@@ -39,6 +39,14 @@ export interface Category {
   createdAt: number;
 }
 
+export interface AcademicYear {
+  id?: number;
+  trainerId: number;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Note {
   id?: number;
   trainerId: number;
@@ -47,6 +55,7 @@ export interface Note {
   courseId: number;
   categoryId: number;
   subcategoryId: number | null;
+  academicYearId?: number | null;
   text: string;
   /** موعد تذكير اختياري (مهمة/نشاط/مهلة) */
   dueAt?: number;
@@ -117,6 +126,7 @@ export class TrainerNotesDB extends Dexie {
   courses!: Table<Course, number>;
   trainees!: Table<Trainee, number>;
   categories!: Table<Category, number>;
+  academicYears!: Table<AcademicYear, number>;
   notes!: Table<Note, number>;
   attachments!: Table<Attachment, number>;
   importLogs!: Table<ImportLog, number>;
@@ -212,6 +222,20 @@ export class TrainerNotesDB extends Dexie {
             ? note.noteAt
             : (typeof note.createdAt === 'number' ? note.createdAt : Date.now());
         });
+      });
+
+    // الإصدار 7: الأعوام الدراسية ككيانات مستقلة ترتبط بالملاحظات
+    this.version(7)
+      .stores({
+        trainers: '++id, name, createdAt',
+        courses: '++id, trainerId, refCode, name, [trainerId+refCode]',
+        trainees: '++id, trainerId, traineeNo, name, [trainerId+traineeNo], *courseIds',
+        categories: '++id, trainerId, parentId, name',
+        academicYears: '++id, trainerId, name, [trainerId+name]',
+        notes: '++id, trainerId, *traineeIds, courseId, categoryId, subcategoryId, academicYearId, dueAt, remindDone, noteAt, createdAt, updatedAt',
+        attachments: '++id, noteId, kind',
+        importLogs: '++id, trainerId, at',
+        settings: 'trainerId'
       });
 
     // حذف مرفقات الملاحظة عند حذفها

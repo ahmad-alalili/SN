@@ -32,6 +32,7 @@ export default function NoteForm() {
   );
   const [catId, setCatId] = useState<number | null>(null);
   const [subCatId, setSubCatId] = useState<number | null>(null);
+  const [academicYearId, setAcademicYearId] = useState<number | null>(null);
   const [text, setText] = useState('');
   const [media, setMedia] = useState<PendingMedia[]>([]);
   const [saving, setSaving] = useState(false);
@@ -56,6 +57,7 @@ export default function NoteForm() {
       setCourseId(existing.courseId);
       setCatId(existing.categoryId || null);
       setSubCatId(existing.subcategoryId ?? null);
+      setAcademicYearId(existing.academicYearId ?? null);
       setText(existing.text);
       const d = new Date(existing.noteAt ?? existing.createdAt);
       d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -70,6 +72,10 @@ export default function NoteForm() {
   const courses = useLiveQuery(() => db.courses.where('trainerId').equals(t.id).toArray(), [t.id]) ?? [];
   const cats = useLiveQuery(
     () => db.categories.where('trainerId').equals(t.id).toArray(),
+    [t.id]
+  ) ?? [];
+  const academicYears = useLiveQuery(
+    () => db.academicYears.where('trainerId').equals(t.id).sortBy('name'),
     [t.id]
   ) ?? [];
   const subCats = catId ? cats.filter(c => c.parentId === catId) : [];
@@ -106,6 +112,7 @@ export default function NoteForm() {
           courseId,
           categoryId: catId ?? 0,
           subcategoryId: subCatId,
+          academicYearId,
           text: text.trim(),
           noteAt: noteTimestamp,
           updatedAt: now,
@@ -120,6 +127,7 @@ export default function NoteForm() {
           trainerId: t.id, traineeIds: finalIds, courseId,
           categoryId: catId ?? 0,
           subcategoryId: subCatId,
+          academicYearId,
           text: text.trim(),
           dueAt: dueTs,
           remind: !!remind,
@@ -199,6 +207,22 @@ export default function NoteForm() {
               createdAt: Date.now()
             });
             toast(`أُنشئ المقرر «${name}» واختير للملاحظة`);
+            return id;
+          }} />
+
+        <AcademicYearPicker
+          items={academicYears}
+          value={academicYearId}
+          onChange={setAcademicYearId}
+          onCreateNew={async name => {
+            const duplicate = await db.academicYears.where('[trainerId+name]').equals([t.id, name]).first();
+            if (duplicate) {
+              toast('هذا العام الدراسي موجود مسبقاً — تم اختياره', 'err');
+              return duplicate.id!;
+            }
+            const now = Date.now();
+            const id = await db.academicYears.add({ trainerId: t.id, name, createdAt: now, updatedAt: now });
+            toast(`أُضيف العام الدراسي «${name}»`);
             return id;
           }} />
 
@@ -591,6 +615,86 @@ function EntityPicker({ label, placeholder, items, value, onChange, emptyText, o
                   disabled={!newName.trim() || !newRefCode.trim()} onClick={quickCreate}>
                   حفظ واستخدام
                 </button>
+                <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => setCreating(false)}>رجوع</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AcademicYearPicker({ items, value, onChange, onCreateNew }: {
+  items: { id?: number; name: string }[];
+  value: number | null;
+  onChange: (value: number | null) => void;
+  onCreateNew: (name: string) => Promise<number>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [q, setQ] = useState('');
+  const [newName, setNewName] = useState('');
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  const selected = items.find(item => item.id === value);
+  const filtered = items.filter(item => !q.trim() || item.name.includes(q.trim()));
+
+  async function create() {
+    if (!newName.trim()) return;
+    const id = await onCreateNew(newName.trim());
+    onChange(id);
+    setNewName('');
+    setQ('');
+    setCreating(false);
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <label className="label">🗓️ العام الدراسي <span className="text-xs font-normal text-slate-400">(اختياري)</span></label>
+      <button type="button" className={`input text-right flex items-center justify-between ${value ? '' : 'text-slate-400'}`}
+        onClick={() => setOpen(current => !current)}>
+        <span className="truncate">{selected?.name ?? 'اختر العام الدراسي أو أضف عاماً جديداً...'}</span>
+        <span className="text-slate-400">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full card p-2 shadow-lg max-h-64 overflow-auto">
+          {!creating ? (
+            <>
+              <input className="input mb-2 py-1.5" autoFocus placeholder="🔍 بحث بالعام الدراسي..." value={q}
+                onChange={event => setQ(event.target.value)} />
+              <button type="button" className="w-full text-right rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-100"
+                onClick={() => { onChange(null); setOpen(false); }}>
+                — بدون عام دراسي —
+              </button>
+              {filtered.map(item => (
+                <button type="button" key={item.id} className={`w-full text-right rounded-lg px-3 py-2 text-sm hover:bg-violet-50 ${item.id === value ? 'bg-violet-100 font-bold' : ''}`}
+                  onClick={() => { onChange(item.id!); setOpen(false); }}>
+                  🗓️ {item.name}
+                </button>
+              ))}
+              <button type="button" className="w-full mt-2 border-t border-dashed border-slate-200 pt-2 text-right rounded-lg px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50"
+                onClick={() => { setNewName(q.trim()); setCreating(true); }}>
+                ＋ إضافة عام دراسي جديد...
+              </button>
+            </>
+          ) : (
+            <div className="space-y-2 p-1">
+              <label className="label !mb-0">عام دراسي جديد</label>
+              <input className="input" autoFocus placeholder="مثال: 1447-1448" value={newName}
+                onChange={event => setNewName(event.target.value)}
+                onKeyDown={event => event.key === 'Enter' && create()} />
+              <div className="flex gap-2">
+                <button type="button" className="btn-primary flex-1 !py-1.5 text-xs" disabled={!newName.trim()} onClick={create}>حفظ واستخدام</button>
                 <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => setCreating(false)}>رجوع</button>
               </div>
             </div>

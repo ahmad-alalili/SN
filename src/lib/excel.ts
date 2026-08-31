@@ -8,6 +8,7 @@ export async function exportNotesToExcel(
     traineeById: Map<number, { name: string; traineeNo: string; level?: string }>;
     courseById: Map<number, { name: string; refCode: string }>;
     catById: Map<number, { name: string; parentId: number | null }>;
+    academicYearById: Map<number, { name: string }>;
   },
   toast: (msg: string, kind?: 'ok' | 'err') => void
 ) {
@@ -28,6 +29,7 @@ export async function exportNotesToExcel(
     const co = maps.courseById.get(n.courseId);
     const main = maps.catById.get(n.categoryId);
     const sub = n.subcategoryId ? maps.catById.get(n.subcategoryId) : null;
+    const academicYear = n.academicYearId ? maps.academicYearById.get(n.academicYearId) : null;
     return {
       '#': i + 1,
       'اسم المتدرب': names || '—',
@@ -37,6 +39,7 @@ export async function exportNotesToExcel(
       'الرقم المرجعي': co?.refCode ?? '',
       'التصنيف الرئيسي': main?.name ?? '',
       'التصنيف الفرعي': sub?.name ?? '',
+      'العام الدراسي': academicYear?.name ?? '',
       'نص الملاحظة': n.text,
       'عدد المرفقات': countByNote.get(n.id!) ?? 0,
       'تاريخ الملاحظة': new Date(n.noteAt ?? n.createdAt).toLocaleString('ar-SA-u-ca-gregory-nu-latn'),
@@ -48,7 +51,7 @@ export async function exportNotesToExcel(
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [
     { wch: 5 }, { wch: 25 }, { wch: 13 }, { wch: 12 }, { wch: 28 },
-    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 50 }, { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 20 }
+    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 50 }, { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 20 }
   ];
   // اتجاه الورقة من اليمين لليسار
   (ws as unknown as { '!dir'?: string })['!dir'] = 'rtl';

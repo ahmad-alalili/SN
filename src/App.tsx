@@ -25,7 +25,7 @@ interface ActiveTrainer { id: number; name: string }
 const TrainerCtx = createContext<ActiveTrainer | null>(null);
 export const useActiveTrainer = () => useContext(TrainerCtx);
 
-export type Screen = 'notes' | 'note-form' | 'trainees' | 'courses' | 'categories' | 'import' | 'settings';
+export type Screen = 'notes' | 'note-form' | 'trainees' | 'courses' | 'categories' | 'academic-years' | 'import' | 'settings';
 interface NavCtxT {
   screen: Screen;
   params: Record<string, unknown>;
@@ -55,7 +55,7 @@ export default function App() {
 
   const [screen, setScreen] = useState<Screen>(() => {
     const h = location.hash.replace(/^#\//, '') as Screen;
-    return ['notes', 'note-form', 'trainees', 'courses', 'categories', 'import', 'settings'].includes(h) ? h : 'notes';
+    return ['notes', 'note-form', 'trainees', 'courses', 'categories', 'academic-years', 'import', 'settings'].includes(h) ? h : 'notes';
   });
   const [params, setParams] = useState<Record<string, unknown>>({});
   const go = useCallback((s: Screen, p: Record<string, unknown> = {}) => {
@@ -66,7 +66,7 @@ export default function App() {
 
   // دعم الروابط العميقة عبر الـ hash (#/trainees ...)
   useEffect(() => {
-    const valid: Screen[] = ['notes', 'note-form', 'trainees', 'courses', 'categories', 'import', 'settings'];
+    const valid: Screen[] = ['notes', 'note-form', 'trainees', 'courses', 'categories', 'academic-years', 'import', 'settings'];
     const h = () => {
       const s = location.hash.replace(/^#\//, '') as Screen;
       if (valid.includes(s)) { setScreen(s); setParams({}); }
@@ -80,6 +80,12 @@ export default function App() {
     const h = () => go('categories');
     window.addEventListener('goto-categories', h);
     return () => window.removeEventListener('goto-categories', h);
+  }, [go]);
+
+  useEffect(() => {
+    const h = () => go('academic-years');
+    window.addEventListener('goto-academic-years', h);
+    return () => window.removeEventListener('goto-academic-years', h);
   }, [go]);
 
   // اختصارات التنقل: Alt+1..7 (إمكانية وصول)
@@ -111,6 +117,7 @@ export default function App() {
               {screen === 'trainees' && <TraineesLazy />}
               {screen === 'courses' && <CoursesLazy />}
               {screen === 'categories' && <CategoriesLazy />}
+              {screen === 'academic-years' && <AcademicYearsLazy />}
               {screen === 'import' && <ImportLazy />}
               {screen === 'settings' && <SettingsLazy />}
             </main>
@@ -129,6 +136,7 @@ import NoteForm from './screens/NoteForm';
 import Trainees from './screens/Trainees';
 import Courses from './screens/Courses';
 import Categories from './screens/Categories';
+import AcademicYears from './screens/AcademicYears';
 import ImportScreen from './screens/Import';
 import Settings from './screens/Settings';
 const NotesListLazy = NotesList;
@@ -136,6 +144,7 @@ const NoteFormLazy = NoteForm;
 const TraineesLazy = Trainees;
 const CoursesLazy = Courses;
 const CategoriesLazy = Categories;
+const AcademicYearsLazy = AcademicYears;
 const ImportLazy = ImportScreen;
 const SettingsLazy = Settings;
 
@@ -209,16 +218,25 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
           <p className="text-brand-100 text-sm mt-1">سجّل ملاحظاتك عن متدربيك — أينما كنت، حتى دون إنترنت</p>
         </div>
         <div className="card p-5 space-y-3">
-          <h2 className="font-bold">اختر ملف المدرب</h2>
-          {trainers.map(t => (
-            <button key={t.id} onClick={() => onPick({ id: t.id!, name: t.name })}
-              className="w-full btn-ghost justify-between">
-              <span>👤 {t.name}</span>
-              <span>دخول ←</span>
-            </button>
-          ))}
-          <div className="pt-2 border-t border-dashed border-slate-200">
-            <label className="label">أو أنشئ ملفاً جديداً</label>
+          {trainers.length > 0 ? (
+            <>
+              <h2 className="font-bold">اختر ملف المدرب</h2>
+              {trainers.map(t => (
+                <button key={t.id} onClick={() => onPick({ id: t.id!, name: t.name })}
+                  className="w-full btn-ghost justify-between">
+                  <span>👤 {t.name}</span>
+                  <span>دخول ←</span>
+                </button>
+              ))}
+            </>
+          ) : (
+            <div className="text-center space-y-1 pb-1">
+              <h2 className="font-bold">أنشئ ملف المدرب للبدء</h2>
+              <p className="text-xs text-slate-500">ستُحفظ الملاحظات والمقررات تحت هذا الملف.</p>
+            </div>
+          )}
+          <div className={trainers.length ? 'pt-2 border-t border-dashed border-slate-200' : ''}>
+            <label className="label">{trainers.length ? 'أو أنشئ ملفاً جديداً' : 'اسم المدرب'}</label>
             <div className="flex gap-2">
               <input className="input" placeholder="اسم المدرب..." value={name}
                 onChange={e => setName(e.target.value)}

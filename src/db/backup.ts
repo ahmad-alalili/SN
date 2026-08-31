@@ -3,7 +3,7 @@ import { blobToBase64, base64ToBlob } from '../lib/media';
 
 interface BackupFile {
   app: 'trainer-notes';
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   exportedAt: number;
   data: {
     trainers: unknown[];
@@ -14,6 +14,7 @@ interface BackupFile {
     attachments: (Omit<Record<string, unknown>, 'blob' | 'thumb'> & { blobB64?: string; thumbB64?: string })[];
     importLogs: unknown[];
     settings?: unknown[];
+    academicYears?: unknown[];
   };
 }
 
@@ -38,10 +39,10 @@ function normalizeRecords(value: unknown, name: string, fallback: number, includ
 }
 
 export async function exportBackup(includeMedia = true): Promise<Blob> {
-  const [trainers, courses, trainees, categories, notes, attachments, importLogs, settings] = await Promise.all([
+  const [trainers, courses, trainees, categories, notes, attachments, importLogs, settings, academicYears] = await Promise.all([
     db.trainers.toArray(), db.courses.toArray(), db.trainees.toArray(),
     db.categories.toArray(), db.notes.toArray(), db.attachments.toArray(),
-    db.importLogs.toArray(), db.settings.toArray()
+    db.importLogs.toArray(), db.settings.toArray(), db.academicYears.toArray()
   ]);
   const atts = includeMedia
     ? await Promise.all(attachments.map(async a => ({
@@ -53,8 +54,8 @@ export async function exportBackup(includeMedia = true): Promise<Blob> {
       })))
     : attachments.map(a => ({ ...a, blob: undefined, thumb: undefined }));
   const backup: BackupFile = {
-    app: 'trainer-notes', version: 2, exportedAt: Date.now(),
-    data: { trainers, courses, trainees, categories, notes, attachments: atts, importLogs, settings }
+    app: 'trainer-notes', version: 3, exportedAt: Date.now(),
+    data: { trainers, courses, trainees, categories, notes, attachments: atts, importLogs, settings, academicYears }
   };
   return new Blob([JSON.stringify(backup)], { type: 'application/json' });
 }
@@ -62,7 +63,7 @@ export async function exportBackup(includeMedia = true): Promise<Blob> {
 export async function importBackup(file: File): Promise<{ mode: 'replace'; restoredCategories: number }> {
   const text = await file.text();
   const parsed = JSON.parse(text) as BackupFile;
-  if (parsed.app !== 'trainer-notes' || (parsed.version !== 1 && parsed.version !== 2)) {
+  if (parsed.app !== 'trainer-notes' || (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3)) {
     throw new Error('الملف ليس نسخة احتياطية صالحة من هذا التطبيق');
   }
   const fallback = timestamp(parsed.exportedAt, Date.now());
@@ -81,6 +82,7 @@ export async function importBackup(file: File): Promise<{ mode: 'replace'; resto
   }));
   const importLogs = records(d.importLogs, 'سجل الاستيراد');
   const settings = d.settings ? records(d.settings, 'الإعدادات') : [];
+  const academicYears = d.academicYears ? normalizeRecords(d.academicYears, 'الأعوام الدراسية', fallback, true) : [];
 
   // النسخ الكاملة تتضمن التصنيفات. في نسخة تالفة/قديمة ننشئ تصنيفاً بديلاً
   // بدلاً من ترك الملاحظات مرتبطة بمعرّفات مفقودة.
@@ -101,15 +103,16 @@ export async function importBackup(file: File): Promise<{ mode: 'replace'; resto
     }
   }
 
-  await db.transaction('rw', [db.trainers, db.courses, db.trainees, db.categories, db.notes, db.attachments, db.importLogs, db.settings], async () => {
+  await db.transaction('rw', [db.trainers, db.courses, db.trainees, db.categories, db.academicYears, db.notes, db.attachments, db.importLogs, db.settings], async () => {
     await Promise.all([
       db.trainers.clear(), db.courses.clear(), db.trainees.clear(),
-      db.categories.clear(), db.notes.clear(), db.attachments.clear(), db.importLogs.clear(), db.settings.clear()
+      db.categories.clear(), db.academicYears.clear(), db.notes.clear(), db.attachments.clear(), db.importLogs.clear(), db.settings.clear()
     ]);
     await db.trainers.bulkAdd(trainers as never[]);
     await db.courses.bulkAdd(courses as never[]);
     await db.trainees.bulkAdd(trainees as never[]);
     await db.categories.bulkAdd(categories as never[]);
+    if (academicYears.length) await db.academicYears.bulkAdd(academicYears as never[]);
     await db.notes.bulkAdd(notes as never[]);
     for (const a of attachments) {
       const { blobB64, thumbB64, ...rest } = a as Record<string, unknown>;
