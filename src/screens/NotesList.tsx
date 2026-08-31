@@ -56,9 +56,9 @@ export default function NotesList() {
         });
       });
     }
-    if (f.from) list = list.filter(n => n.createdAt >= new Date(f.from).getTime());
-    if (f.to) list = list.filter(n => n.createdAt <= new Date(f.to).getTime() + 86400000);
-    return list.sort((a, b) => b.createdAt - a.createdAt);
+    if (f.from) list = list.filter(n => (n.noteAt ?? n.createdAt) >= new Date(f.from).getTime());
+    if (f.to) list = list.filter(n => (n.noteAt ?? n.createdAt) <= new Date(f.to).getTime() + 86400000);
+    return list.sort((a, b) => (b.noteAt ?? b.createdAt) - (a.noteAt ?? a.createdAt));
   }, [notes, f, traineeById, courseById, categories]);
 
   const hasFilter = f.traineeId || f.courseId || f.categoryId || f.q.trim() || f.from || f.to;
@@ -234,6 +234,7 @@ export default function NotesList() {
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className={`text-[11px] text-slate-400 text-left ${isDue ? '!text-red-600 font-bold' : ''}`}>
+                      <span className="block whitespace-nowrap">الملاحظة: {fmtDate(n.noteAt ?? n.createdAt)}</span>
                       <span className="block whitespace-nowrap">أنشئت: {fmtDate(n.createdAt)}</span>
                       <span className="block whitespace-nowrap">آخر تعديل: {fmtDate(n.updatedAt ?? n.createdAt)}</span>
                     </span>

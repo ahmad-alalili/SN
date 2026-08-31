@@ -54,6 +54,8 @@ export interface Note {
   remindDone?: boolean;
   /** درجة الخطورة الخاصة بهذه الملاحظة — تتجاوز افتراضي التصنيف */
   severity?: Severity;
+  /** تاريخ حدوث الملاحظة، مستقل عن سجل إنشائها */
+  noteAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -189,6 +191,26 @@ export class TrainerNotesDB extends Dexie {
           trainee.updatedAt = typeof trainee.updatedAt === 'number'
             ? trainee.updatedAt
             : (typeof trainee.createdAt === 'number' ? trainee.createdAt : Date.now());
+        });
+      });
+
+    // الإصدار 6: فصل تاريخ الحدث عن تاريخ إنشاء السجل لأغراض التدقيق
+    this.version(6)
+      .stores({
+        trainers: '++id, name, createdAt',
+        courses: '++id, trainerId, refCode, name, [trainerId+refCode]',
+        trainees: '++id, trainerId, traineeNo, name, [trainerId+traineeNo], *courseIds',
+        categories: '++id, trainerId, parentId, name',
+        notes: '++id, trainerId, *traineeIds, courseId, categoryId, subcategoryId, dueAt, remindDone, noteAt, createdAt, updatedAt',
+        attachments: '++id, noteId, kind',
+        importLogs: '++id, trainerId, at',
+        settings: 'trainerId'
+      })
+      .upgrade(async tx => {
+        await tx.table('notes').toCollection().modify(note => {
+          note.noteAt = typeof note.noteAt === 'number'
+            ? note.noteAt
+            : (typeof note.createdAt === 'number' ? note.createdAt : Date.now());
         });
       });
 

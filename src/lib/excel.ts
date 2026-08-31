@@ -39,14 +39,16 @@ export async function exportNotesToExcel(
       'التصنيف الفرعي': sub?.name ?? '',
       'نص الملاحظة': n.text,
       'عدد المرفقات': countByNote.get(n.id!) ?? 0,
-      'التاريخ': new Date(n.createdAt).toLocaleString('ar-SA-u-ca-gregory-nu-latn')
+      'تاريخ الملاحظة': new Date(n.noteAt ?? n.createdAt).toLocaleString('ar-SA-u-ca-gregory-nu-latn'),
+      'تاريخ الإنشاء': new Date(n.createdAt).toLocaleString('ar-SA-u-ca-gregory-nu-latn'),
+      'آخر تعديل': new Date(n.updatedAt ?? n.createdAt).toLocaleString('ar-SA-u-ca-gregory-nu-latn')
     };
   });
 
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [
     { wch: 5 }, { wch: 25 }, { wch: 13 }, { wch: 12 }, { wch: 28 },
-    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 50 }, { wch: 10 }, { wch: 20 }
+    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 50 }, { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 20 }
   ];
   // اتجاه الورقة من اليمين لليسار
   (ws as unknown as { '!dir'?: string })['!dir'] = 'rtl';

@@ -71,7 +71,10 @@ export async function importBackup(file: File): Promise<{ mode: 'replace'; resto
   const courses = normalizeRecords(d.courses, 'المقررات', fallback);
   const trainees = normalizeRecords(d.trainees, 'المتدربون', fallback, true);
   const categories = normalizeRecords(d.categories, 'التصنيفات', fallback);
-  const notes = normalizeRecords(d.notes, 'الملاحظات', fallback, true);
+  const notes: StoredRecord[] = normalizeRecords(d.notes, 'الملاحظات', fallback, true).map(note => ({
+    ...note,
+    noteAt: timestamp(note.noteAt, timestamp(note.createdAt, fallback))
+  }));
   const attachments = records(d.attachments, 'المرفقات').map(item => ({
     ...item,
     createdAt: timestamp(item.createdAt, fallback)

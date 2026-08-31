@@ -57,7 +57,7 @@ export default function NoteForm() {
       setCatId(existing.categoryId || null);
       setSubCatId(existing.subcategoryId ?? null);
       setText(existing.text);
-      const d = new Date(existing.createdAt);
+      const d = new Date(existing.noteAt ?? existing.createdAt);
       d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
       setNoteDate(d.toISOString().slice(0, 16));
       setRemind(!!existing.remind && !existing.remindDone);
@@ -107,7 +107,7 @@ export default function NoteForm() {
           categoryId: catId ?? 0,
           subcategoryId: subCatId,
           text: text.trim(),
-          createdAt: noteTimestamp,
+          noteAt: noteTimestamp,
           updatedAt: now,
           dueAt: dueTs,
           remind: !!remind,
@@ -125,7 +125,9 @@ export default function NoteForm() {
           remind: !!remind,
           remindDone: !remind,
           severity: effectiveSev,
-          createdAt: noteTimestamp, updatedAt: now
+          noteAt: noteTimestamp,
+          createdAt: now,
+          updatedAt: now
         });
       }
 
