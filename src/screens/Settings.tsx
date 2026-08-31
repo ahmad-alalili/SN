@@ -43,6 +43,7 @@ export default function Settings() {
   const stats = useLiveQuery(async () => ({
     trainees: await db.trainees.where('trainerId').equals(t.id).count(),
     courses: await db.courses.where('trainerId').equals(t.id).count(),
+    studyTerms: await db.studyTerms.where('trainerId').equals(t.id).count(),
     academicYears: await db.academicYears.where('trainerId').equals(t.id).count(),
     categories: await db.categories.where('trainerId').equals(t.id).count(),
     notes: await db.notes.where('trainerId').equals(t.id).count(),
@@ -87,7 +88,7 @@ export default function Settings() {
         }
         await db.notes.where('trainerId').equals(t.id).delete();
       });
-      for (const coll of [db.trainees, db.courses, db.categories, db.academicYears, db.importLogs]) {
+      for (const coll of [db.trainees, db.courses, db.studyTerms, db.categories, db.academicYears, db.importLogs]) {
         await coll.where('trainerId').equals(t.id).delete();
       }
       toast('تم مسح بيانات المدرب بالكامل');
@@ -215,6 +216,12 @@ export default function Settings() {
         onClick={() => window.dispatchEvent(new CustomEvent('goto-academic-years'))}>
         <span className="font-bold">🗓️ إدارة الأعوام الدراسية</span>
         <span className="text-slate-400 text-sm">{stats?.academicYears ?? 0} عام ←</span>
+      </button>
+
+      <button className="card w-full p-4 flex items-center justify-between hover:bg-slate-50 transition"
+        onClick={() => window.location.hash = '#/study-terms'}>
+        <span className="font-bold">📚 إدارة الفصول والمستويات</span>
+        <span className="text-slate-400 text-sm">{stats?.studyTerms ?? 0} فصل ←</span>
       </button>
 
       {/* النسخ الاحتياطي */}

@@ -128,3 +128,15 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4);
 }
 .appearance-swatch[aria-pressed='true'] { border-color: white; outline: 2px solid var(--app-accent); outline-offset: 2px; }
+.app-nav-button { position: relative; min-width: 0; }
+.app-nav-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 2px;
+  border-radius: 2px;
+  background-color: var(--app-accent);
+  transition: width .2s ease;
+}
+.app-nav-button.text-brand-700::before { width: 22px; }

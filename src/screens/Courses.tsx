@@ -14,12 +14,16 @@ export default function Courses() {
   const [editing, setEditing] = useState<Course | null>(null);
   const [name, setName] = useState('');
   const [refCode, setRefCode] = useState('');
-  const [semester, setSemester] = useState('');
+  const [termId, setTermId] = useState<number | null>(null);
   const [confirmDel, setConfirmDel] = useState<Course | null>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 
   const courses = useLiveQuery(
     () => db.courses.where('trainerId').equals(t.id).toArray(),
+    [t.id]
+  ) ?? [];
+  const terms = useLiveQuery(
+    () => db.studyTerms.where('trainerId').equals(t.id).sortBy('createdAt'),
     [t.id]
   ) ?? [];
 
@@ -30,7 +34,8 @@ export default function Courses() {
   const folders = useMemo(() => {
     const grouped = new Map<string, Course[]>();
     for (const course of filtered) {
-      const folder = course.semester?.trim() || 'بدون فصل دراسي';
+      const term = course.termId ? terms.find(item => item.id === course.termId) : null;
+      const folder = term?.name || course.semester?.trim() || 'بدون فصل دراسي';
       if (!grouped.has(folder)) grouped.set(folder, []);
       grouped.get(folder)!.push(course);
     }
@@ -41,7 +46,7 @@ export default function Courses() {
         return a.localeCompare(b, 'ar');
       })
       .map(([name, items]) => ({ name, items }));
-  }, [filtered]);
+  }, [filtered, terms]);
 
   async function save() {
     const n = name.trim(), rc = refCode.trim();
@@ -49,20 +54,22 @@ export default function Courses() {
     if (await isRefCodeTaken(t.id, rc, editing?.id)) {
       toast('هذا الرقم المرجعي مسجل لمقرر آخر', 'err'); return;
     }
+    const selectedTerm = termId ? terms.find(term => term.id === termId) : null;
     if (editing) {
-      await db.courses.update(editing.id!, { name: n, refCode: rc, semester: semester || undefined });
+      await db.courses.update(editing.id!, { name: n, refCode: rc, termId, semester: selectedTerm?.name });
       toast('تم تعديل المقرر');
     } else {
-      await db.courses.add({ trainerId: t.id, name: n, refCode: rc, semester: semester || undefined, createdAt: Date.now() });
+      await db.courses.add({ trainerId: t.id, name: n, refCode: rc, termId, semester: selectedTerm?.name, createdAt: Date.now() });
       toast(`تمت إضافة «${n}»`);
     }
     closeForm();
   }
 
   function openEdit(c: Course) {
-    setEditing(c); setName(c.name); setRefCode(c.refCode); setSemester(c.semester ?? ''); setShowForm(true);
+    const legacyTerm = terms.find(term => term.name === c.semester);
+    setEditing(c); setName(c.name); setRefCode(c.refCode); setTermId(c.termId ?? legacyTerm?.id ?? null); setShowForm(true);
   }
-  function closeForm() { setShowForm(false); setEditing(null); setName(''); setRefCode(''); setSemester(''); }
+  function closeForm() { setShowForm(false); setEditing(null); setName(''); setRefCode(''); setTermId(null); }
 
   async function doDelete() {
     if (!confirmDel) return;
@@ -144,9 +151,11 @@ export default function Courses() {
                   onChange={e => setRefCode(e.target.value)} />
               </div>
               <div>
-                <label className="label">الفصل الدراسي (اختياري)</label>
-                <input className="input" placeholder="مثال: الفصل الأول 1447" value={semester}
-                  onChange={e => setSemester(e.target.value)} />
+                <label className="label">الفصل أو المستوى</label>
+                <select className="input" value={termId ?? ''} onChange={e => setTermId(e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">بدون فصل</option>
+                  {terms.map(term => <option key={term.id} value={term.id}>{term.name}</option>)}
+                </select>
               </div>
             </div>
             <div className="flex gap-2 pt-1">

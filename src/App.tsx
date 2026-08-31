@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { BookCopy, CirclePlus, Layers3, NotebookPen, NotebookTabs, Settings2, UserRound, UsersRound, type LucideIcon } from 'lucide-react';
 import { db, type Trainer } from './db/schema';
 
 /* ================== Toasts ================== */
@@ -53,7 +54,7 @@ function loadAppearance(): AppAppearance {
   }
 }
 
-export type Screen = 'notes' | 'note-form' | 'trainees' | 'courses' | 'categories' | 'academic-years' | 'import' | 'settings';
+export type Screen = 'notes' | 'note-form' | 'trainees' | 'courses' | 'study-terms' | 'categories' | 'academic-years' | 'import' | 'settings';
 interface NavCtxT {
   screen: Screen;
   params: Record<string, unknown>;
@@ -90,7 +91,7 @@ export default function App() {
 
   const [screen, setScreen] = useState<Screen>(() => {
     const h = location.hash.replace(/^#\//, '') as Screen;
-    return ['notes', 'note-form', 'trainees', 'courses', 'categories', 'academic-years', 'import', 'settings'].includes(h) ? h : 'notes';
+    return ['notes', 'note-form', 'trainees', 'courses', 'study-terms', 'categories', 'academic-years', 'import', 'settings'].includes(h) ? h : 'notes';
   });
   const [params, setParams] = useState<Record<string, unknown>>({});
   const go = useCallback((s: Screen, p: Record<string, unknown> = {}) => {
@@ -101,7 +102,7 @@ export default function App() {
 
   // دعم الروابط العميقة عبر الـ hash (#/trainees ...)
   useEffect(() => {
-    const valid: Screen[] = ['notes', 'note-form', 'trainees', 'courses', 'categories', 'academic-years', 'import', 'settings'];
+    const valid: Screen[] = ['notes', 'note-form', 'trainees', 'courses', 'study-terms', 'categories', 'academic-years', 'import', 'settings'];
     const h = () => {
       const s = location.hash.replace(/^#\//, '') as Screen;
       if (valid.includes(s)) { setScreen(s); setParams({}); }
@@ -127,7 +128,7 @@ export default function App() {
   useEffect(() => {
     const map: Record<string, Screen> = {
       '1': 'notes', '2': 'note-form', '3': 'trainees',
-      '4': 'courses', '5': 'categories', '6': 'import', '7': 'settings'
+      '4': 'courses', '5': 'study-terms', '6': 'categories', '7': 'import', '8': 'settings'
     };
     const h = (e: KeyboardEvent) => {
       const s = map[e.key];
@@ -156,6 +157,7 @@ export default function App() {
                   {screen === 'note-form' && <NoteFormLazy />}
                   {screen === 'trainees' && <TraineesLazy />}
                   {screen === 'courses' && <CoursesLazy />}
+                  {screen === 'study-terms' && <StudyTermsLazy />}
                   {screen === 'categories' && <CategoriesLazy />}
                   {screen === 'academic-years' && <AcademicYearsLazy />}
                   {screen === 'import' && <ImportLazy />}
@@ -177,6 +179,7 @@ import NotesList from './screens/NotesList';
 import NoteForm from './screens/NoteForm';
 import Trainees from './screens/Trainees';
 import Courses from './screens/Courses';
+import StudyTerms from './screens/StudyTerms';
 import Categories from './screens/Categories';
 import AcademicYears from './screens/AcademicYears';
 import ImportScreen from './screens/Import';
@@ -185,6 +188,7 @@ const NotesListLazy = NotesList;
 const NoteFormLazy = NoteForm;
 const TraineesLazy = Trainees;
 const CoursesLazy = Courses;
+const StudyTermsLazy = StudyTerms;
 const CategoriesLazy = Categories;
 const AcademicYearsLazy = AcademicYears;
 const ImportLazy = ImportScreen;
@@ -195,11 +199,11 @@ function Header({ name, onSwitch }: { name: string; onSwitch: () => void }) {
   return (
     <header className="app-header sticky top-0 z-40 text-white shadow-md">
       <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-        <h1 className="text-lg font-bold">📝 ملاحظات المدرب</h1>
+        <h1 className="text-lg font-bold flex items-center gap-2"><NotebookPen size={21} /> ملاحظات المدرب</h1>
         <button onClick={onSwitch}
           className="flex items-center gap-1.5 rounded-full bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-bold transition"
           title="تبديل ملف المدرب">
-          👤 {name}
+          <UserRound size={15} /> {name}
         </button>
       </div>
     </header>
@@ -207,28 +211,31 @@ function Header({ name, onSwitch }: { name: string; onSwitch: () => void }) {
 }
 
 /* ================== الشريط السفلي ================== */
-const NAV: { s: Screen; icon: string; label: string }[] = [
-  { s: 'notes', icon: '🗒️', label: 'الملاحظات' },
-  { s: 'note-form', icon: '➕', label: 'جديدة' },
-  { s: 'trainees', icon: '🧑‍🎓', label: 'المتدربون' },
-  { s: 'courses', icon: '📚', label: 'المقررات' },
-  { s: 'settings', icon: '⚙️', label: 'الإعدادات' }
+const NAV: { s: Screen; icon: LucideIcon; label: string }[] = [
+  { s: 'notes', icon: NotebookTabs, label: 'الملاحظات' },
+  { s: 'note-form', icon: CirclePlus, label: 'جديدة' },
+  { s: 'trainees', icon: UsersRound, label: 'المتدربون' },
+  { s: 'courses', icon: BookCopy, label: 'المقررات' },
+  { s: 'study-terms', icon: Layers3, label: 'الفصول' },
+  { s: 'settings', icon: Settings2, label: 'الإعدادات' }
 ];
 function BottomNav({ screen }: { screen: Screen }) {
   const { go } = useNav();
   return (
     <nav className="app-bottom-nav fixed bottom-0 inset-x-0 z-40 border-t shadow-[0_-2px_10px_rgba(0,0,0,.04)]">
-      <div className="max-w-3xl mx-auto grid grid-cols-5">
-        {NAV.map(n => (
-          <button key={n.s} onClick={() => go(n.s)}
-            className={`flex flex-col items-center py-2.5 text-[11px] font-semibold transition
+      <div className="max-w-3xl mx-auto grid grid-cols-6">
+        {NAV.map(n => {
+          const Icon = n.icon;
+          return (
+          <button key={n.s} onClick={() => go(n.s)} aria-label={n.label}
+            className={`app-nav-button flex flex-col items-center py-2.5 text-[10px] font-semibold transition
               ${screen === n.s ? 'text-brand-700' : 'text-slate-500 hover:text-brand-600'}`}>
-            <span className={`text-xl leading-none mb-1 ${n.s === 'note-form' ? 'app-create-nav grid place-items-center w-11 h-11 -mt-6 rounded-full text-white shadow-lg' : ''}`}>
-              {n.icon}
+            <span className={`leading-none mb-1 ${n.s === 'note-form' ? 'app-create-nav grid place-items-center w-11 h-11 -mt-6 rounded-full text-white shadow-lg' : ''}`}>
+              <Icon size={n.s === 'note-form' ? 23 : 21} strokeWidth={1.8} />
             </span>
             {n.label}
           </button>
-        ))}
+        );})}
       </div>
     </nav>
   );

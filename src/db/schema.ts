@@ -12,7 +12,16 @@ export interface Course {
   refCode: string;
   name: string;
   semester?: string;
+  termId?: number | null;
   createdAt: number;
+}
+
+export interface StudyTerm {
+  id?: number;
+  trainerId: number;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Trainee {
@@ -124,6 +133,7 @@ export interface ImportLog {
 export class TrainerNotesDB extends Dexie {
   trainers!: Table<Trainer, number>;
   courses!: Table<Course, number>;
+  studyTerms!: Table<StudyTerm, number>;
   trainees!: Table<Trainee, number>;
   categories!: Table<Category, number>;
   academicYears!: Table<AcademicYear, number>;
@@ -236,6 +246,43 @@ export class TrainerNotesDB extends Dexie {
         attachments: '++id, noteId, kind',
         importLogs: '++id, trainerId, at',
         settings: 'trainerId'
+      });
+
+    // الإصدار 8: الفصول والمستويات ككيانات مستقلة يمكن إدارتها من الشريط السفلي
+    this.version(8)
+      .stores({
+        trainers: '++id, name, createdAt',
+        courses: '++id, trainerId, refCode, name, termId, [trainerId+refCode]',
+        studyTerms: '++id, trainerId, name, [trainerId+name]',
+        trainees: '++id, trainerId, traineeNo, name, [trainerId+traineeNo], *courseIds',
+        categories: '++id, trainerId, parentId, name',
+        academicYears: '++id, trainerId, name, [trainerId+name]',
+        notes: '++id, trainerId, *traineeIds, courseId, categoryId, subcategoryId, academicYearId, dueAt, remindDone, noteAt, createdAt, updatedAt',
+        attachments: '++id, noteId, kind',
+        importLogs: '++id, trainerId, at',
+        settings: 'trainerId'
+      })
+      .upgrade(async tx => {
+        const terms = tx.table('studyTerms');
+        const courses = tx.table('courses');
+        const byName = new Map<string, number>();
+        for (const course of await courses.toArray()) {
+          const name = typeof course.semester === 'string' ? course.semester.trim() : '';
+          if (!name) continue;
+          const key = `${course.trainerId}:${name}`;
+          let termId = byName.get(key);
+          if (!termId) {
+            const createdTermId = await terms.add({
+              trainerId: course.trainerId,
+              name,
+              createdAt: course.createdAt ?? Date.now(),
+              updatedAt: Date.now()
+            }) as number;
+            termId = createdTermId;
+            byName.set(key, createdTermId);
+          }
+          if (typeof course.id === 'number') await courses.update(course.id, { termId });
+        }
       });
 
     // حذف مرفقات الملاحظة عند حذفها
