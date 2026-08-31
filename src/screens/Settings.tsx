@@ -13,6 +13,7 @@ export default function Settings() {
   const backupRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState('');
   const [est, setEst] = useState<{ usage: number; quota: number } | null>(null);
+  const [storagePersistent, setStoragePersistent] = useState<boolean | null>(null);
 
   // قواعد حالة المتدرب
   const settings = useLiveQuery(() => loadSettings(t.id), [t.id]);
@@ -93,7 +94,20 @@ export default function Settings() {
 
   useEffect(() => {
     storageEstimate().then(setEst);
+    navigator.storage?.persisted?.().then(setStoragePersistent).catch(() => setStoragePersistent(null));
   }, []);
+
+  async function keepDataOnDevice() {
+    if (!navigator.storage?.persist) {
+      toast('هذا المتصفح لا يدعم طلب الحفظ الدائم للبيانات', 'err');
+      return;
+    }
+    const granted = await navigator.storage.persist();
+    setStoragePersistent(granted);
+    toast(granted
+      ? 'تم تفعيل الحفظ الدائم للبيانات على هذا الجهاز'
+      : 'المتصفح لم يمنح الحفظ الدائم. لا تحذف بيانات التصفح، وخذ نسخة احتياطية دورياً', granted ? 'ok' : 'err');
+  }
 
   return (
     <div className="space-y-4">
@@ -188,6 +202,20 @@ export default function Settings() {
         </div>
         <input ref={backupRef} type="file" accept=".json" hidden
           onChange={e => { e.target.files?.[0] && doImportBackup(e.target.files[0]); e.target.value = ''; }} />
+      </div>
+
+      {/* التطبيق دون اتصال */}
+      <div className="card p-4 space-y-3">
+        <h2 className="font-bold">📱 العمل دون إنترنت</h2>
+        <p className="text-xs text-slate-500">
+          بعد فتح التطبيق مرة واحدة أثناء الاتصال، يُحفظ التطبيق وبياناته على هذا الجهاز ويمكن تشغيله بلا إنترنت.
+        </p>
+        <button className="btn-ghost w-full" onClick={keepDataOnDevice}>
+          {storagePersistent ? '✓ بياناتي محفوظة بشكل دائم على الجهاز' : 'حفظ بياناتي بشكل دائم على هذا الجهاز'}
+        </button>
+        <p className="text-[11px] text-slate-400">
+          ثبّت التطبيق من قائمة المتصفح عبر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»، ثم افتحه من أيقونته.
+        </p>
       </div>
 
       {/* حول التطبيق */}
