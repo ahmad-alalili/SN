@@ -183,8 +183,24 @@ export default function NoteForm() {
 
         {/* المقرر */}
         <EntityPicker label="📚 المقرر *" placeholder="ابحث بالاسم أو الرقم المرجعي..."
-          items={courses.map(c => ({ id: c.id!, primary: c.name, secondary: `مرجع #${c.refCode}` }))}
-          value={courseId} onChange={setCourseId} />
+          items={courses.map(c => ({ id: c.id!, primary: c.name, secondary: `مرجع #${c.refCode}${c.semester ? ` • ${c.semester}` : ''}` }))}
+          value={courseId} onChange={setCourseId}
+          onCreateNew={async (name, refCode, semester) => {
+            const duplicate = await db.courses.where('[trainerId+refCode]').equals([t.id, refCode]).first();
+            if (duplicate) {
+              toast('هذا الرقم المرجعي مسجل مسبقاً — تم اختيار المقرر الموجود', 'err');
+              return duplicate.id!;
+            }
+            const id = await db.courses.add({
+              trainerId: t.id,
+              name,
+              refCode,
+              semester: semester || undefined,
+              createdAt: Date.now()
+            });
+            toast(`أُنشئ المقرر «${name}» واختير للملاحظة`);
+            return id;
+          }} />
 
         {/* التصنيف الرئيسي */}
         <div>
@@ -472,7 +488,7 @@ function SeverityChooser({ catSev, value, onChange }: {
 }
 
 /* ================== منتقي كيان مع بحث ================== */
-function EntityPicker({ label, placeholder, items, value, onChange, emptyText, onGoImport }: {
+function EntityPicker({ label, placeholder, items, value, onChange, emptyText, onGoImport, onCreateNew }: {
   label: string;
   placeholder: string;
   items: { id: number; primary: string; secondary?: string }[];
@@ -480,9 +496,14 @@ function EntityPicker({ label, placeholder, items, value, onChange, emptyText, o
   onChange: (v: number | null) => void;
   emptyText?: string;
   onGoImport?: () => void;
+  onCreateNew?: (name: string, refCode: string, semester: string) => Promise<number>;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newRefCode, setNewRefCode] = useState('');
+  const [newSemester, setNewSemester] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -498,6 +519,18 @@ function EntityPicker({ label, placeholder, items, value, onChange, emptyText, o
     !q.trim() || i.primary.includes(q.trim()) || (i.secondary ?? '').includes(q.trim())
   );
 
+  async function quickCreate() {
+    if (!onCreateNew || !newName.trim() || !newRefCode.trim()) return;
+    const id = await onCreateNew(newName.trim(), newRefCode.trim(), newSemester.trim());
+    onChange(id);
+    setCreating(false);
+    setNewName('');
+    setNewRefCode('');
+    setNewSemester('');
+    setQ('');
+    setOpen(false);
+  }
+
   return (
     <div className="relative" ref={wrapRef}>
       <label className="label">{label}</label>
@@ -510,29 +543,57 @@ function EntityPicker({ label, placeholder, items, value, onChange, emptyText, o
 
       {open && (
         <div className="absolute z-30 mt-1 w-full card p-2 shadow-lg max-h-64 overflow-auto">
-          <input className="input mb-2 py-1.5" autoFocus placeholder="🔍 بحث..." value={q}
-            onChange={e => setQ(e.target.value)} />
-          {!items.length && emptyText && (
-            <div className="p-2 space-y-2">
-              <p className="text-xs text-slate-400">{emptyText}</p>
-              {onGoImport && <button type="button" className="btn-primary w-full !py-1.5 text-xs" onClick={() => { setOpen(false); onGoImport(); }}>📥 الذهاب للاستيراد</button>}
+          {!creating ? (
+            <>
+              <input className="input mb-2 py-1.5" autoFocus placeholder="🔍 بحث..." value={q}
+                onChange={e => setQ(e.target.value)} />
+              {!items.length && emptyText && (
+                <div className="p-2 space-y-2">
+                  <p className="text-xs text-slate-400">{emptyText}</p>
+                  {onGoImport && <button type="button" className="btn-primary w-full !py-1.5 text-xs" onClick={() => { setOpen(false); onGoImport(); }}>📥 الذهاب للاستيراد</button>}
+                </div>
+              )}
+              <button type="button"
+                className="w-full text-right rounded-lg px-3 py-2 text-sm hover:bg-slate-100 text-slate-400"
+                onClick={() => { onChange(null); setOpen(false); }}>
+                — اختر لاحقاً / إلغاء التحديد —
+              </button>
+              {filtered.slice(0, 100).map(i => (
+                <button type="button" key={i.id}
+                  className={`w-full text-right rounded-lg px-3 py-2 text-sm hover:bg-brand-50 ${i.id === value ? 'bg-brand-100 font-bold' : ''}`}
+                  onClick={() => { onChange(i.id); setOpen(false); }}>
+                  <span className="font-semibold">{i.primary}</span>
+                  {i.secondary && <span className="block text-[11px] text-slate-400">{i.secondary}</span>}
+                </button>
+              ))}
+              {filtered.length > 100 && (
+                <p className="px-3 py-1 text-xs text-slate-400">…{filtered.length - 100} نتيجة أخرى — اكتب للبحث</p>
+              )}
+              {onCreateNew && (
+                <button type="button" className="w-full mt-2 border-t border-dashed border-slate-200 pt-2 text-right rounded-lg px-3 py-2 text-sm font-bold text-brand-700 hover:bg-brand-50"
+                  onClick={() => { setNewName(q.trim()); setCreating(true); }}>
+                  ＋ إضافة مقرر جديد...
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2 p-1">
+              <label className="label !mb-0">مقرر جديد</label>
+              <input className="input" autoFocus placeholder="اسم المقرر..." value={newName}
+                onChange={e => setNewName(e.target.value)} />
+              <input className="input" inputMode="numeric" placeholder="الرقم المرجعي..." value={newRefCode}
+                onChange={e => setNewRefCode(e.target.value)} />
+              <input className="input" placeholder="الفصل الدراسي (اختياري)..." value={newSemester}
+                onChange={e => setNewSemester(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && quickCreate()} />
+              <div className="flex gap-2">
+                <button type="button" className="btn-primary flex-1 !py-1.5 text-xs"
+                  disabled={!newName.trim() || !newRefCode.trim()} onClick={quickCreate}>
+                  حفظ واستخدام
+                </button>
+                <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => setCreating(false)}>رجوع</button>
+              </div>
             </div>
-          )}
-          <button type="button"
-            className="w-full text-right rounded-lg px-3 py-2 text-sm hover:bg-slate-100 text-slate-400"
-            onClick={() => { onChange(null); setOpen(false); }}>
-            — اختر لاحقاً / إلغاء التحديد —
-          </button>
-          {filtered.slice(0, 100).map(i => (
-            <button type="button" key={i.id}
-              className={`w-full text-right rounded-lg px-3 py-2 text-sm hover:bg-brand-50 ${i.id === value ? 'bg-brand-100 font-bold' : ''}`}
-              onClick={() => { onChange(i.id); setOpen(false); }}>
-              <span className="font-semibold">{i.primary}</span>
-              {i.secondary && <span className="block text-[11px] text-slate-400">{i.secondary}</span>}
-            </button>
-          ))}
-          {filtered.length > 100 && (
-            <p className="px-3 py-1 text-xs text-slate-400">…{filtered.length - 100} نتيجة أخرى — اكتب للبحث</p>
           )}
         </div>
       )}
