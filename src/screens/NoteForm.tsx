@@ -168,10 +168,12 @@ export default function NoteForm() {
           onCreateNew={async (name, no) => {
             const dup = await db.trainees.where('[trainerId+traineeNo]').equals([t.id, no]).first();
             if (dup) { toast('الرقم التدريبي مسجل مسبقاً — اختير المتدرب الموجود', 'err'); return dup.id!; }
+            const now = Date.now();
             const id = await db.trainees.add({
               trainerId: t.id, name, traineeNo: no,
               courseIds: courseId ? [courseId] : [],
-              createdAt: Date.now()
+              createdAt: now,
+              updatedAt: now
             });
             toast(`أُنشئ المتدرب «${name}»`);
             return id;

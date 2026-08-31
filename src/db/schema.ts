@@ -24,6 +24,7 @@ export interface Trainee {
   /** الشعب المسجَّل فيها (تُملأ عند الاستيراد أو الإضافة من نموذج بمقرر محدد) */
   courseIds?: number[];
   createdAt: number;
+  updatedAt: number;
 }
 
 export type Severity = '' | 'yellow' | 'orange' | 'red';
@@ -169,6 +170,26 @@ export class TrainerNotesDB extends Dexie {
         attachments: '++id, noteId, kind',
         importLogs: '++id, trainerId, at',
         settings: 'trainerId'
+      });
+
+    // الإصدار 5: سجل آخر تعديل للمتدربين دون تغيير تاريخ إنشائهم الأصلي
+    this.version(5)
+      .stores({
+        trainers: '++id, name, createdAt',
+        courses: '++id, trainerId, refCode, name, [trainerId+refCode]',
+        trainees: '++id, trainerId, traineeNo, name, [trainerId+traineeNo], *courseIds',
+        categories: '++id, trainerId, parentId, name',
+        notes: '++id, trainerId, *traineeIds, courseId, categoryId, subcategoryId, dueAt, remindDone, createdAt, updatedAt',
+        attachments: '++id, noteId, kind',
+        importLogs: '++id, trainerId, at',
+        settings: 'trainerId'
+      })
+      .upgrade(async tx => {
+        await tx.table('trainees').toCollection().modify(trainee => {
+          trainee.updatedAt = typeof trainee.updatedAt === 'number'
+            ? trainee.updatedAt
+            : (typeof trainee.createdAt === 'number' ? trainee.createdAt : Date.now());
+        });
       });
 
     // حذف مرفقات الملاحظة عند حذفها

@@ -3,7 +3,7 @@ import { blobToBase64, base64ToBlob } from '../lib/media';
 
 interface BackupFile {
   app: 'trainer-notes';
-  version: 1;
+  version: 1 | 2;
   exportedAt: number;
   data: {
     trainers: unknown[];
@@ -13,14 +13,35 @@ interface BackupFile {
     notes: unknown[];
     attachments: (Omit<Record<string, unknown>, 'blob' | 'thumb'> & { blobB64?: string; thumbB64?: string })[];
     importLogs: unknown[];
+    settings?: unknown[];
   };
 }
 
+type StoredRecord = Record<string, unknown>;
+
+function timestamp(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function records(value: unknown, name: string): StoredRecord[] {
+  if (!Array.isArray(value)) throw new Error(`حقل «${name}» غير صالح في النسخة الاحتياطية`);
+  return value.filter((item): item is StoredRecord => !!item && typeof item === 'object');
+}
+
+function normalizeRecords(value: unknown, name: string, fallback: number, includeUpdatedAt = false): StoredRecord[] {
+  return records(value, name).map(item => {
+    const createdAt = timestamp(item.createdAt, fallback);
+    return includeUpdatedAt
+      ? { ...item, createdAt, updatedAt: timestamp(item.updatedAt, createdAt) }
+      : { ...item, createdAt };
+  });
+}
+
 export async function exportBackup(includeMedia = true): Promise<Blob> {
-  const [trainers, courses, trainees, categories, notes, attachments, importLogs] = await Promise.all([
+  const [trainers, courses, trainees, categories, notes, attachments, importLogs, settings] = await Promise.all([
     db.trainers.toArray(), db.courses.toArray(), db.trainees.toArray(),
     db.categories.toArray(), db.notes.toArray(), db.attachments.toArray(),
-    db.importLogs.toArray()
+    db.importLogs.toArray(), db.settings.toArray()
   ]);
   const atts = includeMedia
     ? await Promise.all(attachments.map(async a => ({
@@ -32,30 +53,62 @@ export async function exportBackup(includeMedia = true): Promise<Blob> {
       })))
     : attachments.map(a => ({ ...a, blob: undefined, thumb: undefined }));
   const backup: BackupFile = {
-    app: 'trainer-notes', version: 1, exportedAt: Date.now(),
-    data: { trainers, courses, trainees, categories, notes, attachments: atts, importLogs }
+    app: 'trainer-notes', version: 2, exportedAt: Date.now(),
+    data: { trainers, courses, trainees, categories, notes, attachments: atts, importLogs, settings }
   };
   return new Blob([JSON.stringify(backup)], { type: 'application/json' });
 }
 
-export async function importBackup(file: File): Promise<{ mode: 'replace' }> {
+export async function importBackup(file: File): Promise<{ mode: 'replace'; restoredCategories: number }> {
   const text = await file.text();
   const parsed = JSON.parse(text) as BackupFile;
-  if (parsed.app !== 'tracker-notes-app'.replace('tracker-notes-app', 'trainer-notes') || parsed.version !== 1) {
+  if (parsed.app !== 'trainer-notes' || (parsed.version !== 1 && parsed.version !== 2)) {
     throw new Error('الملف ليس نسخة احتياطية صالحة من هذا التطبيق');
   }
+  const fallback = timestamp(parsed.exportedAt, Date.now());
   const d = parsed.data;
-  await db.transaction('rw', [db.trainers, db.courses, db.trainees, db.categories, db.notes, db.attachments, db.importLogs], async () => {
+  const trainers = normalizeRecords(d.trainers, 'المدربون', fallback);
+  const courses = normalizeRecords(d.courses, 'المقررات', fallback);
+  const trainees = normalizeRecords(d.trainees, 'المتدربون', fallback, true);
+  const categories = normalizeRecords(d.categories, 'التصنيفات', fallback);
+  const notes = normalizeRecords(d.notes, 'الملاحظات', fallback, true);
+  const attachments = records(d.attachments, 'المرفقات').map(item => ({
+    ...item,
+    createdAt: timestamp(item.createdAt, fallback)
+  }));
+  const importLogs = records(d.importLogs, 'سجل الاستيراد');
+  const settings = d.settings ? records(d.settings, 'الإعدادات') : [];
+
+  // النسخ الكاملة تتضمن التصنيفات. في نسخة تالفة/قديمة ننشئ تصنيفاً بديلاً
+  // بدلاً من ترك الملاحظات مرتبطة بمعرّفات مفقودة.
+  const categoryIds = new Set(categories.map(c => c.id).filter((id): id is number => typeof id === 'number'));
+  let restoredCategories = 0;
+  for (const note of notes) {
+    for (const id of [note.categoryId, note.subcategoryId]) {
+      if (typeof id !== 'number' || id <= 0 || categoryIds.has(id)) continue;
+      categories.push({
+        id,
+        trainerId: typeof note.trainerId === 'number' ? note.trainerId : 0,
+        parentId: null,
+        name: `تصنيف مستعاد #${id}`,
+        createdAt: timestamp(note.createdAt, fallback)
+      });
+      categoryIds.add(id);
+      restoredCategories++;
+    }
+  }
+
+  await db.transaction('rw', [db.trainers, db.courses, db.trainees, db.categories, db.notes, db.attachments, db.importLogs, db.settings], async () => {
     await Promise.all([
       db.trainers.clear(), db.courses.clear(), db.trainees.clear(),
-      db.categories.clear(), db.notes.clear(), db.attachments.clear(), db.importLogs.clear()
+      db.categories.clear(), db.notes.clear(), db.attachments.clear(), db.importLogs.clear(), db.settings.clear()
     ]);
-    await db.trainers.bulkAdd(d.trainers as never[]);
-    await db.courses.bulkAdd(d.courses as never[]);
-    await db.trainees.bulkAdd(d.trainees as never[]);
-    await db.categories.bulkAdd(d.categories as never[]);
-    await db.notes.bulkAdd(d.notes as never[]);
-    for (const a of d.attachments) {
+    await db.trainers.bulkAdd(trainers as never[]);
+    await db.courses.bulkAdd(courses as never[]);
+    await db.trainees.bulkAdd(trainees as never[]);
+    await db.categories.bulkAdd(categories as never[]);
+    await db.notes.bulkAdd(notes as never[]);
+    for (const a of attachments) {
       const { blobB64, thumbB64, ...rest } = a as Record<string, unknown>;
       await db.attachments.add({
         ...(rest as object),
@@ -63,9 +116,10 @@ export async function importBackup(file: File): Promise<{ mode: 'replace' }> {
         thumb: thumbB64 ? base64ToBlob(thumbB64 as string, String(rest.mime || 'image/jpeg')) : undefined
       } as never);
     }
-    if (d.importLogs?.length) await db.importLogs.bulkAdd(d.importLogs as never[]);
+    if (importLogs.length) await db.importLogs.bulkAdd(importLogs as never[]);
+    if (settings.length) await db.settings.bulkAdd(settings as never[]);
   });
-  return { mode: 'replace' };
+  return { mode: 'replace', restoredCategories };
 }
 
 /** تقدير حجم التخزين المستخدم */

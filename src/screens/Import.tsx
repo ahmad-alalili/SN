@@ -83,16 +83,18 @@ export default function ImportScreen() {
             changes.courseIds = [...(ex.courseIds ?? []), courseId];
           }
           if (Object.keys(changes).length) {
-            await db.trainees.update(ex.id!, changes);
+            await db.trainees.update(ex.id!, { ...changes, updatedAt: Date.now() });
             updatedTrainees++;
           }
           continue;
         }
+        const now = Date.now();
         await db.trainees.add({
           trainerId: t.id, name: x.name, traineeNo: x.traineeNo,
           level: x.level,
           courseIds: courseId ? [courseId] : [],
-          createdAt: Date.now()
+          createdAt: now,
+          updatedAt: now
         });
         addedTrainees++;
       }

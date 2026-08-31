@@ -69,10 +69,15 @@ export default function Trainees() {
       toast('هذا الرقم التدريبي مسجل مسبقاً لمتدرب آخر', 'err'); return;
     }
     if (editing) {
-      await db.trainees.update(editing.id!, { name: n, traineeNo: num, level: level || undefined });
+      await db.trainees.update(editing.id!, {
+        name: n, traineeNo: num, level: level || undefined, updatedAt: Date.now()
+      });
       toast('تم تعديل بيانات المتدرب');
     } else {
-      await db.trainees.add({ trainerId: t.id, name: n, traineeNo: num, level: level || undefined, createdAt: Date.now() });
+      const now = Date.now();
+      await db.trainees.add({
+        trainerId: t.id, name: n, traineeNo: num, level: level || undefined, createdAt: now, updatedAt: now
+      });
       toast(`تمت إضافة «${n}»`);
     }
     closeForm();
@@ -212,7 +217,8 @@ function TraineeRow({ x }: { x: Trainee }) {
       <div className="flex-1 min-w-0">
         <p className="font-bold truncate">{x.name}</p>
         <p className="text-xs text-slate-500">
-          #{x.traineeNo}{x.level ? ` • ${x.level}` : ''} • أُضيف {fmtDate(x.createdAt)}
+          #{x.traineeNo}{x.level ? ` • ${x.level}` : ''} • أُنشئ {fmtDate(x.createdAt)}
+          <br />آخر تعديل {fmtDate(x.updatedAt ?? x.createdAt)}
         </p>
       </div>
       <TraineeStatusBadge id={x.id!} />

@@ -60,8 +60,10 @@ export default function Settings() {
     if (!confirm('⚠️ الاستيراد سيستبدل كل البيانات الحالية على هذا الجهاز. متأكد؟')) return;
     setBusy('import');
     try {
-      await importBackup(f);
-      toast('تمت استعادة النسخة الاحتياطية — أعد اختيار ملف المدرب');
+      const result = await importBackup(f);
+      toast(result.restoredCategories
+        ? `تمت استعادة النسخة وإضافة ${result.restoredCategories} تصنيف مفقود`
+        : 'تمت استعادة النسخة الاحتياطية مع جميع تواريخها وتصنيفاتها');
       localStorage.removeItem('trainer-notes.activeTrainer');
       location.reload();
     } catch (e) {

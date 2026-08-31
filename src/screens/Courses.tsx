@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, isRefCodeTaken, type Course } from '../db/schema';
 import { useActiveTrainer, useToast, useNav } from '../App';
@@ -16,6 +16,7 @@ export default function Courses() {
   const [refCode, setRefCode] = useState('');
   const [semester, setSemester] = useState('');
   const [confirmDel, setConfirmDel] = useState<Course | null>(null);
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 
   const courses = useLiveQuery(
     () => db.courses.where('trainerId').equals(t.id).toArray(),
@@ -25,6 +26,22 @@ export default function Courses() {
   const filtered = courses
     .filter(x => !q.trim() || x.name.includes(q.trim()) || x.refCode.includes(q.trim()))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+
+  const folders = useMemo(() => {
+    const grouped = new Map<string, Course[]>();
+    for (const course of filtered) {
+      const folder = course.semester?.trim() || 'بدون فصل دراسي';
+      if (!grouped.has(folder)) grouped.set(folder, []);
+      grouped.get(folder)!.push(course);
+    }
+    return [...grouped.entries()]
+      .sort(([a], [b]) => {
+        if (a === 'بدون فصل دراسي') return 1;
+        if (b === 'بدون فصل دراسي') return -1;
+        return a.localeCompare(b, 'ar');
+      })
+      .map(([name, items]) => ({ name, items }));
+  }, [filtered]);
 
   async function save() {
     const n = name.trim(), rc = refCode.trim();
@@ -77,21 +94,39 @@ export default function Courses() {
       ) : !filtered.length ? (
         <p className="text-center text-sm text-slate-400 py-8">لا نتائج مطابقة لـ «{q}»</p>
       ) : (
-        <div className="card divide-y divide-slate-100 overflow-hidden">
-          {filtered.map(c => (
-            <div key={c.id} className="flex items-center gap-3 p-3.5">
-              <div className="w-10 h-10 rounded-xl bg-blue-100 grid place-items-center text-lg shrink-0">📘</div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold truncate">{c.name}</p>
-                <p className="text-xs text-slate-500">
-                  مرجع #{c.refCode}{c.semester ? ` • ${c.semester}` : ''} • أُضيف {fmtDate(c.createdAt)}
-                </p>
-              </div>
-              <NotesBadgeForCourse id={c.id!} />
-              <button className="btn-ghost !p-2 text-xs" onClick={() => openEdit(c)}>✏️</button>
-              <button className="btn-ghost !p-2 text-xs hover:!bg-red-50" onClick={() => setConfirmDel(c)}>🗑️</button>
-            </div>
-          ))}
+        <div className="space-y-3">
+          {folders.map(folder => {
+            const isCollapsed = collapsedFolders[folder.name] ?? false;
+            return (
+              <section key={folder.name} className="card overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 text-right transition"
+                  onClick={() => setCollapsedFolders(current => ({ ...current, [folder.name]: !isCollapsed }))}>
+                  <span className="min-w-0 flex items-center gap-2 font-bold">
+                    <span className="text-lg">📁</span>
+                    <span className="truncate">{folder.name}</span>
+                  </span>
+                  <span className="chip shrink-0">{folder.items.length} {isCollapsed ? '▾' : '▴'}</span>
+                </button>
+                {!isCollapsed && (
+                  <div className="divide-y divide-slate-100">
+                    {folder.items.map(c => (
+                      <div key={c.id} className="flex items-center gap-3 p-3.5">
+                        <div className="w-10 h-10 rounded-xl bg-blue-100 grid place-items-center text-lg shrink-0">📘</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold truncate">{c.name}</p>
+                          <p className="text-xs text-slate-500">مرجع #{c.refCode} • أُضيف {fmtDate(c.createdAt)}</p>
+                        </div>
+                        <NotesBadgeForCourse id={c.id!} />
+                        <button className="btn-ghost !p-2 text-xs" onClick={() => openEdit(c)}>✏️</button>
+                        <button className="btn-ghost !p-2 text-xs hover:!bg-red-50" onClick={() => setConfirmDel(c)}>🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
 

@@ -191,7 +191,6 @@ export default function NotesList() {
             const co = courseById.get(n.courseId);
             const mainCat = catById.get(n.categoryId);
             const subCat = n.subcategoryId ? catById.get(n.subcategoryId) : null;
-            const edited = n.updatedAt - n.createdAt > 60000;
             // الخطورة الفعّالة: الخاصة بالملاحظة أولاً، ثم تصنيفها
             const sev = (n.severity || mainCat?.severity || subCat?.severity || '') as string;
             const isDue = n.remind && !n.remindDone && !!n.dueAt && n.dueAt <= Date.now();
@@ -234,8 +233,9 @@ export default function NotesList() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className={`text-[11px] text-slate-400 whitespace-nowrap ${isDue ? '!text-red-600 font-bold' : ''}`}>
-                      📅 {fmtDate(n.createdAt)}
+                    <span className={`text-[11px] text-slate-400 text-left ${isDue ? '!text-red-600 font-bold' : ''}`}>
+                      <span className="block whitespace-nowrap">أنشئت: {fmtDate(n.createdAt)}</span>
+                      <span className="block whitespace-nowrap">آخر تعديل: {fmtDate(n.updatedAt ?? n.createdAt)}</span>
                     </span>
                     {(mainCat || subCat) && (
                       <span className="chip bg-brand-100 !text-brand-800 max-w-40 truncate">
@@ -263,7 +263,9 @@ export default function NotesList() {
                 {n.id !== undefined && <AttachmentSummary noteId={n.id} />}
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] text-slate-300">{edited ? '(معدلة)' : ''}</span>
+                  <span className="text-[10px] text-slate-300">
+                    {(n.updatedAt ?? n.createdAt) - n.createdAt > 60000 ? '(معدلة)' : ''}
+                  </span>
                   <div className="flex gap-1.5">
                     <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => go('note-form', { noteId: n.id })}>✏️ تعديل</button>
                     <button className="btn-ghost !py-1.5 !px-3 text-xs hover:!bg-red-50" onClick={() => setConfirmDel(n)}>🗑️ حذف</button>
