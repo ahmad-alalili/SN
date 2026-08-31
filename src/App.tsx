@@ -25,6 +25,34 @@ interface ActiveTrainer { id: number; name: string }
 const TrainerCtx = createContext<ActiveTrainer | null>(null);
 export const useActiveTrainer = () => useContext(TrainerCtx);
 
+export type BackgroundChoice = 'coral' | 'verdant';
+export type AccentChoice = 'aqua' | 'coral' | 'lime';
+export interface AppAppearance {
+  background: BackgroundChoice;
+  accent: AccentChoice;
+}
+const APPEARANCE_KEY = 'trainer-notes.appearance';
+const DEFAULT_APPEARANCE: AppAppearance = { background: 'verdant', accent: 'aqua' };
+const AppearanceCtx = createContext<{
+  appearance: AppAppearance;
+  updateAppearance: (next: Partial<AppAppearance>) => void;
+}>({ appearance: DEFAULT_APPEARANCE, updateAppearance: () => {} });
+export const useAppearance = () => useContext(AppearanceCtx);
+
+function loadAppearance(): AppAppearance {
+  try {
+    const saved = JSON.parse(localStorage.getItem(APPEARANCE_KEY) || '{}') as Partial<AppAppearance>;
+    return {
+      background: saved.background === 'coral' ? 'coral' : 'verdant',
+      accent: ['aqua', 'coral', 'lime'].includes(saved.accent ?? '')
+        ? saved.accent as AccentChoice
+        : DEFAULT_APPEARANCE.accent
+    };
+  } catch {
+    return DEFAULT_APPEARANCE;
+  }
+}
+
 export type Screen = 'notes' | 'note-form' | 'trainees' | 'courses' | 'categories' | 'academic-years' | 'import' | 'settings';
 interface NavCtxT {
   screen: Screen;
@@ -45,6 +73,13 @@ export default function App() {
   const [active, setActive] = useState<ActiveTrainer | null>(() => {
     try { return JSON.parse(localStorage.getItem(ACTIVE_KEY) || 'null'); } catch { return null; }
   });
+  const [appearance, setAppearance] = useState<AppAppearance>(loadAppearance);
+  const updateAppearance = useCallback((next: Partial<AppAppearance>) => {
+    setAppearance(current => ({ ...current, ...next }));
+  }, []);
+  useEffect(() => {
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
+  }, [appearance]);
   useEffect(() => {
     if (!active) return;
     localStorage.setItem(ACTIVE_KEY, JSON.stringify(active));
@@ -102,31 +137,38 @@ export default function App() {
     return () => window.removeEventListener('keydown', h);
   }, [go]);
 
-  if (!active) return <TrainerPicker onPick={setActive} />;
-
   return (
-    <ToastCtx.Provider value={toast}>
-      <TrainerCtx.Provider value={active}>
-        <NavContext.Provider value={{ screen, params, go }}>
-          <div className="min-h-screen pb-24">
-            <Header name={active.name}
-              onSwitch={() => { localStorage.removeItem(ACTIVE_KEY); setActive(null); }} />
-            <main className="max-w-3xl mx-auto px-4 pt-4">
-              {screen === 'notes' && <NotesListLazy />}
-              {screen === 'note-form' && <NoteFormLazy />}
-              {screen === 'trainees' && <TraineesLazy />}
-              {screen === 'courses' && <CoursesLazy />}
-              {screen === 'categories' && <CategoriesLazy />}
-              {screen === 'academic-years' && <AcademicYearsLazy />}
-              {screen === 'import' && <ImportLazy />}
-              {screen === 'settings' && <SettingsLazy />}
-            </main>
-            <BottomNav screen={screen} />
-          </div>
-        </NavContext.Provider>
-      </TrainerCtx.Provider>
-      <ToastHost toasts={toasts} />
-    </ToastCtx.Provider>
+    <AppearanceCtx.Provider value={{ appearance, updateAppearance }}>
+      {!active ? <TrainerPicker onPick={setActive} /> : (
+        <ToastCtx.Provider value={toast}>
+          <TrainerCtx.Provider value={active}>
+            <NavContext.Provider value={{ screen, params, go }}>
+              <div
+                className="glass-app min-h-screen pb-24"
+                data-background={appearance.background}
+                data-accent={appearance.accent}
+                style={{ '--app-background-image': `url("${import.meta.env.BASE_URL}backgrounds/glass-${appearance.background}.png")` } as React.CSSProperties}
+              >
+                <Header name={active.name}
+                  onSwitch={() => { localStorage.removeItem(ACTIVE_KEY); setActive(null); }} />
+                <main className="max-w-3xl mx-auto px-4 pt-4">
+                  {screen === 'notes' && <NotesListLazy />}
+                  {screen === 'note-form' && <NoteFormLazy />}
+                  {screen === 'trainees' && <TraineesLazy />}
+                  {screen === 'courses' && <CoursesLazy />}
+                  {screen === 'categories' && <CategoriesLazy />}
+                  {screen === 'academic-years' && <AcademicYearsLazy />}
+                  {screen === 'import' && <ImportLazy />}
+                  {screen === 'settings' && <SettingsLazy />}
+                </main>
+                <BottomNav screen={screen} />
+              </div>
+            </NavContext.Provider>
+          </TrainerCtx.Provider>
+          <ToastHost toasts={toasts} />
+        </ToastCtx.Provider>
+      )}
+    </AppearanceCtx.Provider>
   );
 }
 
@@ -151,7 +193,7 @@ const SettingsLazy = Settings;
 /* ================== الترويسة ================== */
 function Header({ name, onSwitch }: { name: string; onSwitch: () => void }) {
   return (
-    <header className="sticky top-0 z-40 bg-brand-700 text-white shadow-md">
+    <header className="app-header sticky top-0 z-40 text-white shadow-md">
       <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
         <h1 className="text-lg font-bold">📝 ملاحظات المدرب</h1>
         <button onClick={onSwitch}
@@ -175,13 +217,13 @@ const NAV: { s: Screen; icon: string; label: string }[] = [
 function BottomNav({ screen }: { screen: Screen }) {
   const { go } = useNav();
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 shadow-[0_-2px_10px_rgba(0,0,0,.04)]">
+    <nav className="app-bottom-nav fixed bottom-0 inset-x-0 z-40 border-t shadow-[0_-2px_10px_rgba(0,0,0,.04)]">
       <div className="max-w-3xl mx-auto grid grid-cols-5">
         {NAV.map(n => (
           <button key={n.s} onClick={() => go(n.s)}
             className={`flex flex-col items-center py-2.5 text-[11px] font-semibold transition
               ${screen === n.s ? 'text-brand-700' : 'text-slate-500 hover:text-brand-600'}`}>
-            <span className={`text-xl leading-none mb-1 ${n.s === 'note-form' ? 'grid place-items-center w-11 h-11 -mt-6 rounded-full bg-brand-700 text-white shadow-lg' : ''}`}>
+            <span className={`text-xl leading-none mb-1 ${n.s === 'note-form' ? 'app-create-nav grid place-items-center w-11 h-11 -mt-6 rounded-full text-white shadow-lg' : ''}`}>
               {n.icon}
             </span>
             {n.label}

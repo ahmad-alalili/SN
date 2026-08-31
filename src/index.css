@@ -30,3 +30,101 @@
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+
+/* واجهة زجاجية: الخلفية صورة أصلية، أما الشفافية فتقتصر على عناصر التطبيق. */
+.glass-app {
+  --app-accent: #48d4c4;
+  --app-accent-ink: #062c29;
+  --app-accent-soft: rgba(72, 212, 196, .18);
+  --app-glass: rgba(4, 25, 28, .72);
+  --app-glass-strong: rgba(3, 18, 20, .82);
+  --app-line: rgba(223, 255, 248, .2);
+  --app-ink: #f2fffc;
+  --app-muted: #b9d1cd;
+  min-height: 100vh;
+  color: var(--app-ink);
+  background-image: var(--app-background-image);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+.glass-app[data-accent='coral'] { --app-accent: #ffad91; --app-accent-ink: #381811; --app-accent-soft: rgba(255, 173, 145, .2); }
+.glass-app[data-accent='lime'] { --app-accent: #b7df78; --app-accent-ink: #17250d; --app-accent-soft: rgba(183, 223, 120, .2); }
+.glass-app .app-header,
+.glass-app .app-bottom-nav {
+  background-color: var(--app-glass-strong);
+  border-color: var(--app-line);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.glass-app .app-create-nav,
+.glass-app .btn-primary,
+.glass-app .bg-brand-700,
+.glass-app .bg-brand-600 {
+  background-color: var(--app-accent) !important;
+  color: var(--app-accent-ink) !important;
+  border-color: transparent !important;
+}
+.glass-app .btn-primary:hover { filter: brightness(1.08); }
+.glass-app .text-brand-700,
+.glass-app .text-brand-600,
+.glass-app .text-brand-800 { color: var(--app-accent) !important; }
+.glass-app .border-brand-600,
+.glass-app .border-brand-200 { border-color: var(--app-accent) !important; }
+.glass-app .ring-brand-200 { --tw-ring-color: var(--app-accent-soft) !important; }
+.glass-app .card,
+.glass-app .bg-white,
+.glass-app .bg-slate-50,
+.glass-app .bg-slate-100 {
+  background-color: var(--app-glass) !important;
+  border-color: var(--app-line) !important;
+  color: var(--app-ink);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.glass-app .card { border-radius: 8px; box-shadow: 0 14px 34px rgba(0, 0, 0, .22); }
+.glass-app .btn,
+.glass-app .input { border-radius: 8px; }
+.glass-app .btn-ghost {
+  background-color: rgba(246, 255, 252, .09) !important;
+  border-color: var(--app-line) !important;
+  color: var(--app-ink) !important;
+}
+.glass-app .btn-ghost:hover { background-color: rgba(246, 255, 252, .17) !important; }
+.glass-app .input {
+  background-color: rgba(1, 15, 17, .44) !important;
+  border-color: var(--app-line) !important;
+  color: var(--app-ink) !important;
+}
+.glass-app .input::placeholder { color: var(--app-muted) !important; }
+.glass-app select option { color: #163632; background: #f4fffc; }
+.glass-app .text-slate-800,
+.glass-app .text-slate-700,
+.glass-app .text-slate-600 { color: var(--app-ink) !important; }
+.glass-app .text-slate-500,
+.glass-app .text-slate-400,
+.glass-app .text-slate-300 { color: var(--app-muted) !important; }
+.glass-app .border-slate-100,
+.glass-app .border-slate-200,
+.glass-app .border-slate-300 { border-color: var(--app-line) !important; }
+.glass-app .chip { background-color: rgba(242, 255, 251, .13); color: var(--app-ink); }
+.glass-app .bg-brand-100 { background-color: var(--app-accent-soft) !important; }
+.glass-app .hover\:bg-slate-50:hover,
+.glass-app .hover\:bg-slate-100:hover { background-color: rgba(246, 255, 252, .14) !important; }
+.appearance-background {
+  min-height: 82px;
+  border: 1px solid var(--app-line);
+  border-radius: 8px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
+}
+.appearance-background[aria-pressed='true'] { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+.appearance-swatch {
+  width: 34px;
+  height: 34px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4);
+}
+.appearance-swatch[aria-pressed='true'] { border-color: white; outline: 2px solid var(--app-accent); outline-offset: 2px; }

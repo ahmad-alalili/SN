@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, loadSettings, type AppSettings } from '../db/schema';
 import { exportBackup, importBackup, storageEstimate } from '../db/backup';
-import { useActiveTrainer, useToast } from '../App';
+import { useActiveTrainer, useAppearance, useToast, type AccentChoice, type BackgroundChoice } from '../App';
 import { fmtSize, fmtDate } from '../lib/media';
 import { saveAs } from '../lib/excel';
 import { statusOf } from '../lib/status';
@@ -10,6 +10,7 @@ import { statusOf } from '../lib/status';
 export default function Settings() {
   const t = useActiveTrainer()!;
   const toast = useToast();
+  const { appearance, updateAppearance } = useAppearance();
   const backupRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState('');
   const [est, setEst] = useState<{ usage: number; quota: number } | null>(null);
@@ -114,6 +115,30 @@ export default function Settings() {
 
   return (
     <div className="space-y-4">
+      <div className="card p-4 space-y-4">
+        <div>
+          <h2 className="font-bold">المظهر</h2>
+          <p className="text-xs text-slate-500 mt-1">اختيارات المظهر تحفظ على هذا الجهاز وتعمل دون إنترنت.</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-slate-500 mb-2">الخلفية الزجاجية</p>
+          <div className="grid grid-cols-2 gap-3">
+            <BackgroundOption id="coral" label="مرجانية" selected={appearance.background}
+              onChoose={background => updateAppearance({ background })} />
+            <BackgroundOption id="verdant" label="خضراء عميقة" selected={appearance.background}
+              onChoose={background => updateAppearance({ background })} />
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-slate-500 mb-2">لون التمييز</p>
+          <div className="flex items-center gap-3" role="group" aria-label="لون التمييز">
+            <AccentSwatch id="aqua" color="#48d4c4" selected={appearance.accent} onChoose={accent => updateAppearance({ accent })} />
+            <AccentSwatch id="coral" color="#ffad91" selected={appearance.accent} onChoose={accent => updateAppearance({ accent })} />
+            <AccentSwatch id="lime" color="#b7df78" selected={appearance.accent} onChoose={accent => updateAppearance({ accent })} />
+          </div>
+        </div>
+      </div>
+
       {/* قواعد حالة المتدرب */}
       <div className="card p-4 space-y-3">
         <h2 className="font-bold">🚦 قواعد حالة المتدرب</h2>
@@ -244,6 +269,35 @@ export default function Settings() {
         </button>
       </div>
     </div>
+  );
+}
+
+function BackgroundOption({ id, label, selected, onChoose }: {
+  id: BackgroundChoice;
+  label: string;
+  selected: BackgroundChoice;
+  onChoose: (background: BackgroundChoice) => void;
+}) {
+  return (
+    <button type="button" className="appearance-background text-right p-3 flex items-end"
+      style={{ backgroundImage: `url("${import.meta.env.BASE_URL}backgrounds/glass-${id}.png")` }}
+      aria-pressed={selected === id} onClick={() => onChoose(id)}>
+      <span className="text-xs font-bold text-white drop-shadow">{label}</span>
+    </button>
+  );
+}
+
+function AccentSwatch({ id, color, selected, onChoose }: {
+  id: AccentChoice;
+  color: string;
+  selected: AccentChoice;
+  onChoose: (accent: AccentChoice) => void;
+}) {
+  const labels: Record<AccentChoice, string> = { aqua: 'مائي', coral: 'مرجاني', lime: 'ليموني' };
+  return (
+    <button type="button" className="appearance-swatch" style={{ backgroundColor: color }}
+      aria-label={`لون ${labels[id]}`} title={`لون ${labels[id]}`}
+      aria-pressed={selected === id} onClick={() => onChoose(id)} />
   );
 }
 
