@@ -148,7 +148,7 @@ export default function App() {
                 className="glass-app min-h-screen pb-24"
                 data-background={appearance.background}
                 data-accent={appearance.accent}
-                style={{ '--app-background-image': `url("${import.meta.env.BASE_URL}backgrounds/glass-${appearance.background}.png")` } as React.CSSProperties}
+                style={{ backgroundImage: `url("${import.meta.env.BASE_URL}backgrounds/glass-${appearance.background}.png")` }}
               >
                 <Header name={active.name}
                   onSwitch={() => { localStorage.removeItem(ACTIVE_KEY); setActive(null); }} />

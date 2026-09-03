@@ -43,11 +43,13 @@
   --app-muted: #b9d1cd;
   min-height: 100vh;
   color: var(--app-ink);
-  background-image: var(--app-background-image);
   background-position: center;
   background-size: cover;
   background-attachment: fixed;
+  background-repeat: no-repeat;
 }
+.glass-app[data-background='coral'] { background-color: #6b241d; }
+.glass-app[data-background='verdant'] { background-color: #063f2b; }
 .glass-app[data-accent='coral'] { --app-accent: #ffad91; --app-accent-ink: #381811; --app-accent-soft: rgba(255, 173, 145, .2); }
 .glass-app[data-accent='lime'] { --app-accent: #b7df78; --app-accent-ink: #17250d; --app-accent-soft: rgba(183, 223, 120, .2); }
 .glass-app .app-header,
