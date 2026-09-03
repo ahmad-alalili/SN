@@ -123,10 +123,12 @@ export default function Settings() {
         </div>
         <div>
           <p className="text-xs font-semibold text-slate-500 mb-2">الخلفية الزجاجية</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <BackgroundOption id="coral" label="مرجانية" selected={appearance.background}
               onChoose={background => updateAppearance({ background })} />
             <BackgroundOption id="verdant" label="خضراء عميقة" selected={appearance.background}
+              onChoose={background => updateAppearance({ background })} />
+            <BackgroundOption id="graphite" label="جرافيت مائي" selected={appearance.background}
               onChoose={background => updateAppearance({ background })} />
           </div>
         </div>

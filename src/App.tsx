@@ -26,7 +26,7 @@ interface ActiveTrainer { id: number; name: string }
 const TrainerCtx = createContext<ActiveTrainer | null>(null);
 export const useActiveTrainer = () => useContext(TrainerCtx);
 
-export type BackgroundChoice = 'coral' | 'verdant';
+export type BackgroundChoice = 'coral' | 'verdant' | 'graphite';
 export type AccentChoice = 'aqua' | 'coral' | 'lime';
 export interface AppAppearance {
   background: BackgroundChoice;
@@ -44,7 +44,9 @@ function loadAppearance(): AppAppearance {
   try {
     const saved = JSON.parse(localStorage.getItem(APPEARANCE_KEY) || '{}') as Partial<AppAppearance>;
     return {
-      background: saved.background === 'coral' ? 'coral' : 'verdant',
+      background: ['coral', 'verdant', 'graphite'].includes(saved.background ?? '')
+        ? saved.background as BackgroundChoice
+        : DEFAULT_APPEARANCE.background,
       accent: ['aqua', 'coral', 'lime'].includes(saved.accent ?? '')
         ? saved.accent as AccentChoice
         : DEFAULT_APPEARANCE.accent
