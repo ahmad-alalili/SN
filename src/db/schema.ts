@@ -136,8 +136,9 @@ export interface PortableFileLink {
   /** FileSystemFileHandle is structured-cloneable and remains local to this browser. */
   handle?: unknown;
   /** Non-extractable device key; the password itself is never stored. */
-  key: CryptoKey;
-  salt: string;
+  key?: CryptoKey;
+  salt?: string;
+  encrypted?: boolean;
   direct: boolean;
   dirty: boolean;
   lastChangedAt?: number;

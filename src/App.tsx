@@ -1,9 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { ArrowRight, BookCopy, CirclePlus, FilePlus2, FolderOpen, KeyRound, Layers3, NotebookPen, NotebookTabs, Settings2, UserRound, UsersRound, type LucideIcon } from 'lucide-react';
+import { ArrowRight, BookCopy, CirclePlus, FilePlus2, FolderOpen, KeyRound, Layers3, NotebookPen, NotebookTabs, Settings2, ShieldCheck, UserRound, UsersRound, type LucideIcon } from 'lucide-react';
 import { db, type Trainer } from './db/schema';
 import {
-  importPortableTrainer, linkPortableTrainer, pickPortableOpenFile, pickPortableSaveHandle,
-  saveLinkedTrainer, supportsDirectPortableFiles, watchPortableTrainer, type PickedPortableFile
+  importPortableTrainer, inspectPortableFile, linkPortableTrainer, pickPortableOpenFile, pickPortableSaveHandle,
+  saveLinkedTrainer, supportsDirectPortableFiles, watchPortableTrainer, type PickedPortableFile, type PortableFileInfo
 } from './db/portable';
 
 /* ================== Toasts ================== */
@@ -255,7 +255,9 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [passwordAgain, setPasswordAgain] = useState('');
+  const [encryptFile, setEncryptFile] = useState(true);
   const [picked, setPicked] = useState<PickedPortableFile | null>(null);
+  const [pickedInfo, setPickedInfo] = useState<PortableFileInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -266,14 +268,14 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
     const n = name.trim();
     setError('');
     if (!n) { setError('اكتب اسم المدرب أولاً'); return; }
-    if (password.length < 6) { setError('استخدم كلمة مرور من 6 أحرف على الأقل'); return; }
-    if (password !== passwordAgain) { setError('كلمتا المرور غير متطابقتين'); return; }
+    if (encryptFile && password.length < 6) { setError('استخدم كلمة مرور من 6 أحرف على الأقل'); return; }
+    if (encryptFile && password !== passwordAgain) { setError('كلمتا المرور غير متطابقتين'); return; }
     setBusy(true);
     let trainerId: number | undefined;
     try {
       const handle = await pickPortableSaveHandle(n);
       trainerId = await db.trainers.add({ name: n, createdAt: Date.now() });
-      await linkPortableTrainer(trainerId, n, password, handle);
+      await linkPortableTrainer(trainerId, n, password, handle, encryptFile);
       await saveLinkedTrainer(trainerId, { userInitiated: true, downloadFallback: true });
       onPick({ id: trainerId, name: n });
     } catch (cause) {
@@ -287,11 +289,25 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
     } finally { setBusy(false); }
   }
 
+  async function acceptPreviousFile(selected: PickedPortableFile) {
+    setError('');
+    try {
+      const info = await inspectPortableFile(selected.file);
+      setPicked(selected);
+      setPickedInfo(info);
+      if (!info.encrypted) setPassword('');
+    } catch (cause) {
+      setPicked(null);
+      setPickedInfo(null);
+      setError(cause instanceof Error ? cause.message : 'الملف غير صالح');
+    }
+  }
+
   async function choosePreviousFile() {
     setError('');
     try {
       const selected = await pickPortableOpenFile();
-      if (selected) setPicked(selected);
+      if (selected) await acceptPreviousFile(selected);
       else fileRef.current?.click();
     } catch (cause) {
       if ((cause as DOMException)?.name !== 'AbortError') setError('تعذر فتح منتقي الملفات');
@@ -300,7 +316,7 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
 
   async function openPrevious() {
     if (!picked) { setError('اختر ملف المدرب أولاً'); return; }
-    if (!password) { setError('أدخل كلمة مرور الملف'); return; }
+    if (pickedInfo?.encrypted && !password) { setError('أدخل كلمة مرور الملف'); return; }
     if (trainers.length && !confirm('فتح الملف السابق سيستبدل البيانات المحلية الحالية على هذا المتصفح. هل تريد المتابعة؟')) return;
     setBusy(true); setError('');
     try {
@@ -351,21 +367,33 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
                 <p className="text-xs text-slate-500 mt-1">
                   {supportsDirectPortableFiles()
                     ? 'ستختار مكان الملف، ثم تُحفظ التغييرات فيه تلقائياً.'
-                    : 'سيُنزل ملف مشفر يمكنك حفظه في الملفات أو iCloud.'}
+                    : 'سيُنزل ملف يمكنك حفظه في الملفات أو iCloud.'}
                 </p>
               </div>
               <label className="block"><span className="label">اسم المدرب</span>
                 <input className="input" autoComplete="name" placeholder="اسم المدرب..." value={name} onChange={e => setName(e.target.value)} />
               </label>
-              <label className="block"><span className="label">كلمة مرور الملف</span>
-                <div className="relative"><KeyRound className="absolute right-3 top-3 w-4 h-4 text-slate-400" />
-                  <input className="input !pr-10" type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} />
-                </div>
+              <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 cursor-pointer">
+                <input type="checkbox" className="mt-1 accent-[var(--app-accent)]" checked={encryptFile}
+                  onChange={e => setEncryptFile(e.target.checked)} />
+                <span><span className="font-semibold text-sm flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> تشفير الملف بكلمة مرور</span>
+                  <span className="block text-xs text-slate-500 mt-1">موصى به، ويمكن إيقافه إذا كنت تريد ملفاً بلا كلمة مرور.</span></span>
               </label>
-              <label className="block"><span className="label">تأكيد كلمة المرور</span>
-                <input className="input" type="password" autoComplete="new-password" value={passwordAgain}
-                  onChange={e => setPasswordAgain(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
-              </label>
+              {encryptFile ? <>
+                <label className="block"><span className="label">كلمة مرور الملف</span>
+                  <div className="relative"><KeyRound className="absolute right-3 top-3 w-4 h-4 text-slate-400" />
+                    <input className="input !pr-10" type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} />
+                  </div>
+                </label>
+                <label className="block"><span className="label">تأكيد كلمة المرور</span>
+                  <input className="input" type="password" autoComplete="new-password" value={passwordAgain}
+                    onChange={e => setPasswordAgain(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
+                </label>
+              </> : (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                  الملف غير المشفر يمكن فتحه وقراءة محتوياته خارج التطبيق.
+                </p>
+              )}
               <button className="btn-primary w-full" disabled={busy} onClick={add}>
                 <FilePlus2 className="w-5 h-5" /> {busy ? 'جارٍ الإنشاء...' : 'إنشاء واختيار مكان الحفظ'}
               </button>
@@ -378,17 +406,24 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
                 <ArrowRight className="w-4 h-4" /> رجوع
               </button>
               <div><h2 className="font-bold">فتح ملف مدرب سابق</h2>
-                <p className="text-xs text-slate-500 mt-1">اختر ملف `.trainer-notes` ثم أدخل كلمة مروره.</p>
+                <p className="text-xs text-slate-500 mt-1">اختر ملف `.trainer-notes`، وسيكتشف التطبيق تلقائياً هل يحتاج كلمة مرور.</p>
               </div>
               <button className="btn-ghost w-full" onClick={choosePreviousFile}>
                 <FolderOpen className="w-5 h-5" /> {picked ? picked.file.name : 'اختيار الملف'}
               </button>
               <input ref={fileRef} hidden type="file" accept=".trainer-notes,application/vnd.trainer-notes+json"
-                onChange={e => { const file = e.target.files?.[0]; if (file) setPicked({ file }); e.target.value = ''; }} />
-              <label className="block"><span className="label">كلمة مرور الملف</span>
-                <input className="input" type="password" autoComplete="current-password" value={password}
-                  onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && openPrevious()} />
-              </label>
+                onChange={e => { const file = e.target.files?.[0]; if (file) void acceptPreviousFile({ file }); e.target.value = ''; }} />
+              {pickedInfo && (
+                <p className={`text-xs rounded-lg border p-2.5 ${pickedInfo.encrypted ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                  {pickedInfo.encrypted ? 'هذا الملف مشفر ويتطلب كلمة مرور.' : 'هذا الملف غير مشفر ويمكن فتحه مباشرة.'}
+                </p>
+              )}
+              {pickedInfo?.encrypted && (
+                <label className="block"><span className="label">كلمة مرور الملف</span>
+                  <input className="input" type="password" autoComplete="current-password" value={password}
+                    onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && openPrevious()} />
+                </label>
+              )}
               <button className="btn-primary w-full" disabled={busy || !picked} onClick={openPrevious}>
                 <FolderOpen className="w-5 h-5" /> {busy ? 'جارٍ فتح الملف...' : 'فتح ومتابعة العمل'}
               </button>
@@ -398,7 +433,7 @@ function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
           {error && <p role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg p-2.5">{error}</p>}
         </div>
         <p className="text-center text-brand-100/70 text-xs mt-4">
-          ملفاتك مشفرة، ولا تُرسل الملاحظات إلى GitHub أو أي خادم
+          أنت تختار مستوى الحماية، ولا تُرسل الملاحظات إلى GitHub أو أي خادم
         </p>
       </div>
     </div>

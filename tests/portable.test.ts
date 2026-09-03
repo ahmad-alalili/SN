@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decryptPortablePayload, encryptPortablePayload } from '../src/db/portable';
+import { createPlainPortablePayload, decryptPortablePayload, encryptPortablePayload } from '../src/db/portable';
 
 describe('ملف المدرب المحمول', () => {
   it('يشفر البيانات ويعيدها كاملة بكلمة المرور الصحيحة', async () => {
@@ -13,5 +13,13 @@ describe('ملف المدرب المحمول', () => {
   it('يرفض كلمة المرور الخاطئة', async () => {
     const encrypted = await encryptPortablePayload('{"ok":true}', 'مدرب', 'correct-password');
     await expect(decryptPortablePayload(encrypted, 'wrong-password')).rejects.toThrow('كلمة المرور غير صحيحة');
+  });
+
+  it('يفتح الملف غير المشفر دون كلمة مرور', async () => {
+    const original = JSON.stringify({ trainer: 'خالد', notes: ['بيانات يملكها صاحب الملف'] });
+    const plain = createPlainPortablePayload(original, 'خالد');
+
+    expect(plain).toContain('بيانات يملكها صاحب الملف');
+    await expect(decryptPortablePayload(plain, '')).resolves.toBe(original);
   });
 });

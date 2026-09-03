@@ -18,11 +18,14 @@ declare global {
   }
 }
 
-interface PortableEnvelope {
+interface PortableEnvelopeBase {
   app: 'trainer-notes-portable';
   version: 1;
   trainerName: string;
   exportedAt: number;
+}
+
+interface EncryptedPortableEnvelope extends PortableEnvelopeBase {
   encryption: {
     algorithm: 'AES-GCM';
     kdf: 'PBKDF2-SHA-256';
@@ -31,6 +34,19 @@ interface PortableEnvelope {
     iv: string;
   };
   ciphertext: string;
+}
+
+interface PlainPortableEnvelope extends PortableEnvelopeBase {
+  encryption: null;
+  data: string;
+}
+
+type PortableEnvelope = EncryptedPortableEnvelope | PlainPortableEnvelope;
+
+export interface PortableFileInfo {
+  encrypted: boolean;
+  trainerName: string;
+  exportedAt: number;
 }
 
 export interface PickedPortableFile {
@@ -75,7 +91,7 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   );
 }
 
-async function createEnvelope(plaintext: string, trainerName: string, key: CryptoKey, salt: string): Promise<PortableEnvelope> {
+async function createEnvelope(plaintext: string, trainerName: string, key: CryptoKey, salt: string): Promise<EncryptedPortableEnvelope> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: toArrayBuffer(iv) },
@@ -98,7 +114,7 @@ async function createEnvelope(plaintext: string, trainerName: string, key: Crypt
   };
 }
 
-async function decryptEnvelope(envelope: PortableEnvelope, key: CryptoKey): Promise<string> {
+async function decryptEnvelope(envelope: EncryptedPortableEnvelope, key: CryptoKey): Promise<string> {
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: toArrayBuffer(base64ToBytes(envelope.encryption.iv)) },
     key,
@@ -107,9 +123,17 @@ async function decryptEnvelope(envelope: PortableEnvelope, key: CryptoKey): Prom
   return decoder.decode(decrypted);
 }
 
-async function encryptedTrainerBlob(trainerId: number, trainerName: string, key: CryptoKey, salt: string): Promise<Blob> {
+async function portableTrainerBlob(trainerId: number, trainerName: string, link: PortableFileLink): Promise<Blob> {
   const backup = await exportBackup(true, trainerId);
-  const envelope = await createEnvelope(await backup.text(), trainerName, key, salt);
+  const plaintext = await backup.text();
+  const encrypted = link.encrypted !== false;
+  if (encrypted && (!link.key || !link.salt)) throw new Error('مفتاح تشفير ملف المدرب غير متاح');
+  const envelope: PortableEnvelope = encrypted
+    ? await createEnvelope(plaintext, trainerName, link.key!, link.salt!)
+    : {
+        app: 'trainer-notes-portable', version: 1, trainerName,
+        exportedAt: Date.now(), encryption: null, data: plaintext
+      };
   return new Blob([JSON.stringify(envelope)], { type: 'application/vnd.trainer-notes+json' });
 }
 
@@ -127,7 +151,7 @@ export async function pickPortableSaveHandle(trainerName: string): Promise<Writa
   return window.showSaveFilePicker({
     suggestedName: safeFileName(trainerName),
     types: [{
-      description: 'ملف ملاحظات المدرب المشفر',
+      description: 'ملف ملاحظات المدرب',
       accept: { 'application/vnd.trainer-notes+json': ['.trainer-notes'] }
     }]
   });
@@ -138,7 +162,7 @@ export async function pickPortableOpenFile(): Promise<PickedPortableFile | null>
   const [handle] = await window.showOpenFilePicker({
     multiple: false,
     types: [{
-      description: 'ملف ملاحظات المدرب المشفر',
+      description: 'ملف ملاحظات المدرب',
       accept: { 'application/vnd.trainer-notes+json': ['.trainer-notes'] }
     }]
   });
@@ -149,15 +173,17 @@ export async function linkPortableTrainer(
   trainerId: number,
   trainerName: string,
   password: string,
-  handle?: WritableFileHandle
+  handle?: WritableFileHandle,
+  encrypted = true
 ): Promise<PortableFileLink> {
-  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const saltBytes = encrypted ? crypto.getRandomValues(new Uint8Array(16)) : undefined;
   const link: PortableFileLink = {
     trainerId,
     fileName: handle?.name || safeFileName(trainerName),
     handle,
-    key: await deriveKey(password, saltBytes),
-    salt: bytesToBase64(saltBytes),
+    key: saltBytes ? await deriveKey(password, saltBytes) : undefined,
+    salt: saltBytes ? bytesToBase64(saltBytes) : undefined,
+    encrypted,
     direct: !!handle,
     dirty: true,
     lastChangedAt: Date.now()
@@ -175,7 +201,7 @@ async function performLinkedSave(
   if (!link) return 'not-linked';
   const trainer = await db.trainers.get(trainerId);
   if (!trainer) return 'not-linked';
-  const blob = await encryptedTrainerBlob(trainerId, trainer.name, link.key, link.salt);
+  const blob = await portableTrainerBlob(trainerId, trainer.name, link);
   const handle = link.handle as WritableFileHandle | undefined;
 
   if (handle) {
@@ -227,14 +253,26 @@ export function saveLinkedTrainer(
 }
 
 function parseEnvelope(text: string): PortableEnvelope {
-  const parsed = JSON.parse(text) as Partial<PortableEnvelope>;
+  const parsed = JSON.parse(text) as Record<string, unknown>;
   if (parsed.app !== 'trainer-notes-portable' || parsed.version !== 1 ||
-      parsed.encryption?.algorithm !== 'AES-GCM' || parsed.encryption.kdf !== 'PBKDF2-SHA-256' ||
-      typeof parsed.encryption.salt !== 'string' || typeof parsed.encryption.iv !== 'string' ||
+      typeof parsed.trainerName !== 'string' || typeof parsed.exportedAt !== 'number') {
+    throw new Error('الملف ليس ملف مدرب صالحاً');
+  }
+  if (parsed.encryption === null && typeof parsed.data === 'string') {
+    return parsed as unknown as PlainPortableEnvelope;
+  }
+  const encryption = parsed.encryption as Record<string, unknown> | undefined;
+  if (encryption?.algorithm !== 'AES-GCM' || encryption.kdf !== 'PBKDF2-SHA-256' ||
+      typeof encryption.salt !== 'string' || typeof encryption.iv !== 'string' ||
       typeof parsed.ciphertext !== 'string') {
     throw new Error('الملف ليس ملف مدرب صالحاً');
   }
-  return parsed as PortableEnvelope;
+  return parsed as unknown as EncryptedPortableEnvelope;
+}
+
+export async function inspectPortableFile(file: File): Promise<PortableFileInfo> {
+  const envelope = parseEnvelope(await file.text());
+  return { encrypted: envelope.encryption !== null, trainerName: envelope.trainerName, exportedAt: envelope.exportedAt };
 }
 
 /** Pure helpers used by compatibility tests and future native wrappers. */
@@ -244,8 +282,17 @@ export async function encryptPortablePayload(plaintext: string, trainerName: str
   return JSON.stringify(await createEnvelope(plaintext, trainerName, key, bytesToBase64(salt)));
 }
 
+export function createPlainPortablePayload(plaintext: string, trainerName: string): string {
+  const envelope: PlainPortableEnvelope = {
+    app: 'trainer-notes-portable', version: 1, trainerName,
+    exportedAt: Date.now(), encryption: null, data: plaintext
+  };
+  return JSON.stringify(envelope);
+}
+
 export async function decryptPortablePayload(contents: string, password: string): Promise<string> {
   const envelope = parseEnvelope(contents);
+  if (envelope.encryption === null) return envelope.data;
   const key = await deriveKey(password, base64ToBytes(envelope.encryption.salt));
   try {
     return await decryptEnvelope(envelope, key);
@@ -259,13 +306,18 @@ export async function importPortableTrainer(
   password: string
 ): Promise<{ id: number; name: string }> {
   const envelope = parseEnvelope(await picked.file.text());
-  const salt = base64ToBytes(envelope.encryption.salt);
-  const key = await deriveKey(password, salt);
+  const encrypted = envelope.encryption !== null;
+  const salt = encrypted ? base64ToBytes(envelope.encryption.salt) : undefined;
+  const key = salt ? await deriveKey(password, salt) : undefined;
   let plaintext: string;
-  try {
-    plaintext = await decryptEnvelope(envelope, key);
-  } catch {
-    throw new Error('كلمة المرور غير صحيحة أو الملف تالف');
+  if (encrypted) {
+    try {
+      plaintext = await decryptEnvelope(envelope, key!);
+    } catch {
+      throw new Error('كلمة المرور غير صحيحة أو الملف تالف');
+    }
+  } else {
+    plaintext = envelope.data;
   }
   const backupFile = new File([plaintext], 'trainer-backup.json', { type: 'application/json' });
   await importBackup(backupFile);
@@ -280,7 +332,8 @@ export async function importPortableTrainer(
     fileName: picked.handle?.name || picked.file.name,
     handle: picked.handle,
     key,
-    salt: envelope.encryption.salt,
+    salt: encrypted ? envelope.encryption.salt : undefined,
+    encrypted,
     direct: !!picked.handle,
     dirty: false,
     lastChangedAt: envelope.exportedAt,

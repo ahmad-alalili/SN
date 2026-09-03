@@ -6,7 +6,7 @@ import { useActiveTrainer, useAppearance, useToast, type AccentChoice, type Back
 import { fmtSize, fmtDate } from '../lib/media';
 import { saveAs } from '../lib/excel';
 import { statusOf } from '../lib/status';
-import { FileKey2, FolderSync, Save } from 'lucide-react';
+import { FileKey2, FolderSync, Save, ShieldCheck } from 'lucide-react';
 import {
   linkPortableTrainer, pickPortableSaveHandle, saveLinkedTrainer,
   supportsDirectPortableFiles
@@ -22,6 +22,7 @@ export default function Settings() {
   const [storagePersistent, setStoragePersistent] = useState<boolean | null>(null);
   const [portablePassword, setPortablePassword] = useState('');
   const [portablePasswordAgain, setPortablePasswordAgain] = useState('');
+  const [encryptPortable, setEncryptPortable] = useState(true);
   const portableLink = useLiveQuery(() => db.portableFiles.get(t.id), [t.id]);
 
   // قواعد حالة المتدرب
@@ -123,24 +124,24 @@ export default function Settings() {
   }
 
   async function setupPortableFile() {
-    if (portablePassword.length < 6) {
+    if (encryptPortable && portablePassword.length < 6) {
       toast('استخدم كلمة مرور من 6 أحرف على الأقل', 'err');
       return;
     }
-    if (portablePassword !== portablePasswordAgain) {
+    if (encryptPortable && portablePassword !== portablePasswordAgain) {
       toast('كلمتا المرور غير متطابقتين', 'err');
       return;
     }
     setBusy('portable');
     try {
       const handle = await pickPortableSaveHandle(t.name);
-      await linkPortableTrainer(t.id, t.name, portablePassword, handle);
+      await linkPortableTrainer(t.id, t.name, portablePassword, handle, encryptPortable);
       const result = await saveLinkedTrainer(t.id, { userInitiated: true, downloadFallback: true });
       setPortablePassword('');
       setPortablePasswordAgain('');
       toast(result === 'saved'
         ? 'تم ربط ملف المدرب وتفعيل الحفظ التلقائي'
-        : 'تم إنشاء ملف المدرب المشفر؛ احفظه في مكان آمن');
+        : `تم إنشاء ملف المدرب ${encryptPortable ? 'المشفر' : 'غير المشفر'}؛ احفظه في مكان آمن`);
     } catch (cause) {
       if ((cause as DOMException)?.name !== 'AbortError') {
         console.error(cause);
@@ -285,6 +286,7 @@ export default function Settings() {
               <p className="font-semibold break-all">{portableLink.fileName}</p>
               <p className="text-xs text-slate-500">
                 {portableLink.direct ? 'حفظ تلقائي مباشر' : 'حفظ يدوي متوافق مع iPhone والمتصفحات المقيدة'}
+                {' • '}{portableLink.encrypted !== false ? 'مشفر بكلمة مرور' : 'غير مشفر'}
               </p>
               <p className={`text-xs font-semibold ${portableLink.dirty ? 'text-amber-500' : 'text-emerald-500'}`}>
                 {portableLink.dirty
@@ -299,16 +301,28 @@ export default function Settings() {
         ) : (
           <>
             <p className="text-xs text-slate-500">
-              أنشئ ملفاً مشفراً تملكه أنت. {supportsDirectPortableFiles()
+              أنشئ ملفاً محمولاً تملكه أنت. {supportsDirectPortableFiles()
                 ? 'سيختار المتصفح مكانه ويحدثه تلقائياً.'
                 : 'يمكن حفظه في تطبيق الملفات أو iCloud وتحديثه يدوياً.'}
             </p>
-            <div className="grid sm:grid-cols-2 gap-2">
-              <input className="input" type="password" autoComplete="new-password" placeholder="كلمة مرور الملف"
-                value={portablePassword} onChange={e => setPortablePassword(e.target.value)} />
-              <input className="input" type="password" autoComplete="new-password" placeholder="تأكيد كلمة المرور"
-                value={portablePasswordAgain} onChange={e => setPortablePasswordAgain(e.target.value)} />
-            </div>
+            <label className="flex items-start gap-3 rounded-lg border border-white/20 bg-black/10 p-3 cursor-pointer">
+              <input type="checkbox" className="mt-1 accent-[var(--app-accent)]" checked={encryptPortable}
+                onChange={e => setEncryptPortable(e.target.checked)} />
+              <span><span className="font-semibold text-sm flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> تشفير الملف بكلمة مرور</span>
+                <span className="block text-xs text-slate-500 mt-1">موصى به لحماية الملاحظات والمرفقات عند نقل الملف.</span></span>
+            </label>
+            {encryptPortable ? (
+              <div className="grid sm:grid-cols-2 gap-2">
+                <input className="input" type="password" autoComplete="new-password" placeholder="كلمة مرور الملف"
+                  value={portablePassword} onChange={e => setPortablePassword(e.target.value)} />
+                <input className="input" type="password" autoComplete="new-password" placeholder="تأكيد كلمة المرور"
+                  value={portablePasswordAgain} onChange={e => setPortablePasswordAgain(e.target.value)} />
+              </div>
+            ) : (
+              <p className="text-xs text-amber-600 bg-amber-500/10 border border-amber-400/30 rounded-lg p-2.5">
+                تنبيه: يمكن لأي شخص يصل إلى الملف غير المشفر قراءة محتوياته.
+              </p>
+            )}
             <button className="btn-primary w-full" disabled={busy === 'portable'} onClick={setupPortableFile}>
               <FolderSync className="w-5 h-5" /> {busy === 'portable' ? 'جارٍ إنشاء الملف...' : 'إنشاء وربط ملف المدرب'}
             </button>
