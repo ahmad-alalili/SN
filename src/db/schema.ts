@@ -130,6 +130,20 @@ export interface ImportLog {
   at: number;
 }
 
+export interface PortableFileLink {
+  trainerId: number;
+  fileName: string;
+  /** FileSystemFileHandle is structured-cloneable and remains local to this browser. */
+  handle?: unknown;
+  /** Non-extractable device key; the password itself is never stored. */
+  key: CryptoKey;
+  salt: string;
+  direct: boolean;
+  dirty: boolean;
+  lastChangedAt?: number;
+  lastSavedAt?: number;
+}
+
 export class TrainerNotesDB extends Dexie {
   trainers!: Table<Trainer, number>;
   courses!: Table<Course, number>;
@@ -141,6 +155,7 @@ export class TrainerNotesDB extends Dexie {
   attachments!: Table<Attachment, number>;
   importLogs!: Table<ImportLog, number>;
   settings!: Table<AppSettings, number>;
+  portableFiles!: Table<PortableFileLink, number>;
 
   constructor() {
     super('trainer-notes');
@@ -284,6 +299,21 @@ export class TrainerNotesDB extends Dexie {
           if (typeof course.id === 'number') await courses.update(course.id, { termId });
         }
       });
+
+    // الإصدار 9: ربط ملف مدرب مشفر للحفظ المباشر على الأجهزة الداعمة
+    this.version(9).stores({
+      trainers: '++id, name, createdAt',
+      courses: '++id, trainerId, refCode, name, termId, [trainerId+refCode]',
+      studyTerms: '++id, trainerId, name, [trainerId+name]',
+      trainees: '++id, trainerId, traineeNo, name, [trainerId+traineeNo], *courseIds',
+      categories: '++id, trainerId, parentId, name',
+      academicYears: '++id, trainerId, name, [trainerId+name]',
+      notes: '++id, trainerId, *traineeIds, courseId, categoryId, subcategoryId, academicYearId, dueAt, remindDone, noteAt, createdAt, updatedAt',
+      attachments: '++id, noteId, kind',
+      importLogs: '++id, trainerId, at',
+      settings: 'trainerId',
+      portableFiles: 'trainerId'
+    });
 
     // حذف مرفقات الملاحظة عند حذفها
     this.notes.hook('deleting', (primKey, obj, tx) => {

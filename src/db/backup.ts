@@ -39,12 +39,22 @@ function normalizeRecords(value: unknown, name: string, fallback: number, includ
   });
 }
 
-export async function exportBackup(includeMedia = true): Promise<Blob> {
-  const [trainers, courses, trainees, categories, notes, attachments, importLogs, settings, academicYears, studyTerms] = await Promise.all([
-    db.trainers.toArray(), db.courses.toArray(), db.trainees.toArray(),
-    db.categories.toArray(), db.notes.toArray(), db.attachments.toArray(),
-    db.importLogs.toArray(), db.settings.toArray(), db.academicYears.toArray(), db.studyTerms.toArray()
+export async function exportBackup(includeMedia = true, trainerId?: number): Promise<Blob> {
+  const [trainers, courses, trainees, categories, notes, importLogs, settings, academicYears, studyTerms] = await Promise.all([
+    trainerId === undefined ? db.trainers.toArray() : db.trainers.where('id').equals(trainerId).toArray(),
+    trainerId === undefined ? db.courses.toArray() : db.courses.where('trainerId').equals(trainerId).toArray(),
+    trainerId === undefined ? db.trainees.toArray() : db.trainees.where('trainerId').equals(trainerId).toArray(),
+    trainerId === undefined ? db.categories.toArray() : db.categories.where('trainerId').equals(trainerId).toArray(),
+    trainerId === undefined ? db.notes.toArray() : db.notes.where('trainerId').equals(trainerId).toArray(),
+    trainerId === undefined ? db.importLogs.toArray() : db.importLogs.where('trainerId').equals(trainerId).toArray(),
+    trainerId === undefined ? db.settings.toArray() : db.settings.where('trainerId').equals(trainerId).toArray(),
+    trainerId === undefined ? db.academicYears.toArray() : db.academicYears.where('trainerId').equals(trainerId).toArray(),
+    trainerId === undefined ? db.studyTerms.toArray() : db.studyTerms.where('trainerId').equals(trainerId).toArray()
   ]);
+  const noteIds = new Set(notes.map(note => note.id).filter((id): id is number => typeof id === 'number'));
+  const attachments = trainerId === undefined
+    ? await db.attachments.toArray()
+    : (await db.attachments.toArray()).filter(attachment => noteIds.has(attachment.noteId));
   const atts = includeMedia
     ? await Promise.all(attachments.map(async a => ({
         ...a,
@@ -125,10 +135,10 @@ export async function importBackup(file: File): Promise<{ mode: 'replace'; resto
     }
   }
 
-  await db.transaction('rw', [db.trainers, db.courses, db.studyTerms, db.trainees, db.categories, db.academicYears, db.notes, db.attachments, db.importLogs, db.settings], async () => {
+  await db.transaction('rw', [db.trainers, db.courses, db.studyTerms, db.trainees, db.categories, db.academicYears, db.notes, db.attachments, db.importLogs, db.settings, db.portableFiles], async () => {
     await Promise.all([
       db.trainers.clear(), db.courses.clear(), db.trainees.clear(),
-      db.categories.clear(), db.academicYears.clear(), db.studyTerms.clear(), db.notes.clear(), db.attachments.clear(), db.importLogs.clear(), db.settings.clear()
+      db.categories.clear(), db.academicYears.clear(), db.studyTerms.clear(), db.notes.clear(), db.attachments.clear(), db.importLogs.clear(), db.settings.clear(), db.portableFiles.clear()
     ]);
     await db.trainers.bulkAdd(trainers as never[]);
     await db.courses.bulkAdd(courses as never[]);

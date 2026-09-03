@@ -1,6 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { BookCopy, CirclePlus, Layers3, NotebookPen, NotebookTabs, Settings2, UserRound, UsersRound, type LucideIcon } from 'lucide-react';
+import { ArrowRight, BookCopy, CirclePlus, FilePlus2, FolderOpen, KeyRound, Layers3, NotebookPen, NotebookTabs, Settings2, UserRound, UsersRound, type LucideIcon } from 'lucide-react';
 import { db, type Trainer } from './db/schema';
+import {
+  importPortableTrainer, linkPortableTrainer, pickPortableOpenFile, pickPortableSaveHandle,
+  saveLinkedTrainer, supportsDirectPortableFiles, watchPortableTrainer, type PickedPortableFile
+} from './db/portable';
 
 /* ================== Toasts ================== */
 interface Toast { id: number; msg: string; kind: 'ok' | 'err' }
@@ -90,6 +94,7 @@ export default function App() {
       if (!t) { setActive(null); localStorage.removeItem(ACTIVE_KEY); }
     });
   }, [active]);
+  useEffect(() => active ? watchPortableTrainer(active.id) : undefined, [active?.id]);
 
   const [screen, setScreen] = useState<Screen>(() => {
     const h = location.hash.replace(/^#\//, '') as Screen;
@@ -246,58 +251,154 @@ function BottomNav({ screen }: { screen: Screen }) {
 /* ================== شاشة اختيار المدرب ================== */
 function TrainerPicker({ onPick }: { onPick: (t: ActiveTrainer) => void }) {
   const [trainers, setTrainers] = React.useState<Trainer[]>([]);
+  const [mode, setMode] = useState<'home' | 'create' | 'open'>('home');
   const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordAgain, setPasswordAgain] = useState('');
+  const [picked, setPicked] = useState<PickedPortableFile | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = React.useRef<HTMLInputElement>(null);
   const refresh = () => db.trainers.orderBy('name').toArray().then(setTrainers);
   useEffect(() => { refresh(); }, []);
 
   async function add() {
     const n = name.trim();
-    if (!n) return;
-    await db.trainers.add({ name: n, createdAt: Date.now() });
-    setName('');
-    const all = await db.trainers.where('name').equals(n).toArray();
-    const t = all[all.length - 1];
-    onPick({ id: t.id!, name: t.name });
+    setError('');
+    if (!n) { setError('اكتب اسم المدرب أولاً'); return; }
+    if (password.length < 6) { setError('استخدم كلمة مرور من 6 أحرف على الأقل'); return; }
+    if (password !== passwordAgain) { setError('كلمتا المرور غير متطابقتين'); return; }
+    setBusy(true);
+    let trainerId: number | undefined;
+    try {
+      const handle = await pickPortableSaveHandle(n);
+      trainerId = await db.trainers.add({ name: n, createdAt: Date.now() });
+      await linkPortableTrainer(trainerId, n, password, handle);
+      await saveLinkedTrainer(trainerId, { userInitiated: true, downloadFallback: true });
+      onPick({ id: trainerId, name: n });
+    } catch (cause) {
+      if (trainerId) {
+        await db.portableFiles.delete(trainerId);
+        await db.trainers.delete(trainerId);
+      }
+      if ((cause as DOMException)?.name !== 'AbortError') {
+        setError(cause instanceof Error ? cause.message : 'تعذر إنشاء ملف المدرب');
+      }
+    } finally { setBusy(false); }
+  }
+
+  async function choosePreviousFile() {
+    setError('');
+    try {
+      const selected = await pickPortableOpenFile();
+      if (selected) setPicked(selected);
+      else fileRef.current?.click();
+    } catch (cause) {
+      if ((cause as DOMException)?.name !== 'AbortError') setError('تعذر فتح منتقي الملفات');
+    }
+  }
+
+  async function openPrevious() {
+    if (!picked) { setError('اختر ملف المدرب أولاً'); return; }
+    if (!password) { setError('أدخل كلمة مرور الملف'); return; }
+    if (trainers.length && !confirm('فتح الملف السابق سيستبدل البيانات المحلية الحالية على هذا المتصفح. هل تريد المتابعة؟')) return;
+    setBusy(true); setError('');
+    try {
+      const trainer = await importPortableTrainer(picked, password);
+      onPick(trainer);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'تعذر فتح ملف المدرب');
+    } finally { setBusy(false); }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-700 to-brand-900 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center text-white mb-6">
-          <div className="text-5xl mb-2">📝</div>
+          <NotebookPen className="w-12 h-12 mx-auto mb-2" strokeWidth={1.7} />
           <h1 className="text-2xl font-extrabold">ملاحظات المدرب</h1>
           <p className="text-brand-100 text-sm mt-1">سجّل ملاحظاتك عن متدربيك — أينما كنت، حتى دون إنترنت</p>
         </div>
         <div className="card p-5 space-y-3">
-          {trainers.length > 0 ? (
+          {mode === 'home' && (
             <>
-              <h2 className="font-bold">اختر ملف المدرب</h2>
-              {trainers.map(t => (
-                <button key={t.id} onClick={() => onPick({ id: t.id!, name: t.name })}
-                  className="w-full btn-ghost justify-between">
-                  <span>👤 {t.name}</span>
-                  <span>دخول ←</span>
+              {trainers.length > 0 && <h2 className="font-bold">ملفات المدربين على هذا الجهاز</h2>}
+              {trainers.map(trainer => (
+                <button key={trainer.id} onClick={() => onPick({ id: trainer.id!, name: trainer.name })}
+                  className="w-full btn-ghost justify-between gap-3">
+                  <span className="flex items-center gap-2"><UserRound className="w-4 h-4" />{trainer.name}</span>
+                  <ArrowRight className="w-4 h-4 rotate-180" />
                 </button>
               ))}
+              <div className={trainers.length ? 'pt-3 border-t border-slate-200/60 space-y-2' : 'space-y-2'}>
+                <button className="btn-primary w-full" onClick={() => { setMode('create'); setError(''); }}>
+                  <FilePlus2 className="w-5 h-5" /> إنشاء ملف مدرب جديد
+                </button>
+                <button className="btn-ghost w-full" onClick={() => { setMode('open'); setError(''); }}>
+                  <FolderOpen className="w-5 h-5" /> فتح ملف مدرب سابق
+                </button>
+              </div>
             </>
-          ) : (
-            <div className="text-center space-y-1 pb-1">
-              <h2 className="font-bold">أنشئ ملف المدرب للبدء</h2>
-              <p className="text-xs text-slate-500">ستُحفظ الملاحظات والمقررات تحت هذا الملف.</p>
+          )}
+
+          {mode === 'create' && (
+            <div className="space-y-3">
+              <button className="text-sm text-slate-500 flex items-center gap-1" onClick={() => setMode('home')}>
+                <ArrowRight className="w-4 h-4" /> رجوع
+              </button>
+              <div>
+                <h2 className="font-bold">إنشاء ملف مدرب جديد</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  {supportsDirectPortableFiles()
+                    ? 'ستختار مكان الملف، ثم تُحفظ التغييرات فيه تلقائياً.'
+                    : 'سيُنزل ملف مشفر يمكنك حفظه في الملفات أو iCloud.'}
+                </p>
+              </div>
+              <label className="block"><span className="label">اسم المدرب</span>
+                <input className="input" autoComplete="name" placeholder="اسم المدرب..." value={name} onChange={e => setName(e.target.value)} />
+              </label>
+              <label className="block"><span className="label">كلمة مرور الملف</span>
+                <div className="relative"><KeyRound className="absolute right-3 top-3 w-4 h-4 text-slate-400" />
+                  <input className="input !pr-10" type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} />
+                </div>
+              </label>
+              <label className="block"><span className="label">تأكيد كلمة المرور</span>
+                <input className="input" type="password" autoComplete="new-password" value={passwordAgain}
+                  onChange={e => setPasswordAgain(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
+              </label>
+              <button className="btn-primary w-full" disabled={busy} onClick={add}>
+                <FilePlus2 className="w-5 h-5" /> {busy ? 'جارٍ الإنشاء...' : 'إنشاء واختيار مكان الحفظ'}
+              </button>
             </div>
           )}
-          <div className={trainers.length ? 'pt-2 border-t border-dashed border-slate-200' : ''}>
-            <label className="label">{trainers.length ? 'أو أنشئ ملفاً جديداً' : 'اسم المدرب'}</label>
-            <div className="flex gap-2">
-              <input className="input" placeholder="اسم المدرب..." value={name}
-                onChange={e => setName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && add()} />
-              <button className="btn-primary shrink-0" onClick={add}>إضافة</button>
+
+          {mode === 'open' && (
+            <div className="space-y-3">
+              <button className="text-sm text-slate-500 flex items-center gap-1" onClick={() => setMode('home')}>
+                <ArrowRight className="w-4 h-4" /> رجوع
+              </button>
+              <div><h2 className="font-bold">فتح ملف مدرب سابق</h2>
+                <p className="text-xs text-slate-500 mt-1">اختر ملف `.trainer-notes` ثم أدخل كلمة مروره.</p>
+              </div>
+              <button className="btn-ghost w-full" onClick={choosePreviousFile}>
+                <FolderOpen className="w-5 h-5" /> {picked ? picked.file.name : 'اختيار الملف'}
+              </button>
+              <input ref={fileRef} hidden type="file" accept=".trainer-notes,application/vnd.trainer-notes+json"
+                onChange={e => { const file = e.target.files?.[0]; if (file) setPicked({ file }); e.target.value = ''; }} />
+              <label className="block"><span className="label">كلمة مرور الملف</span>
+                <input className="input" type="password" autoComplete="current-password" value={password}
+                  onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && openPrevious()} />
+              </label>
+              <button className="btn-primary w-full" disabled={busy || !picked} onClick={openPrevious}>
+                <FolderOpen className="w-5 h-5" /> {busy ? 'جارٍ فتح الملف...' : 'فتح ومتابعة العمل'}
+              </button>
             </div>
-          </div>
+          )}
+
+          {error && <p role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg p-2.5">{error}</p>}
         </div>
         <p className="text-center text-brand-100/70 text-xs mt-4">
-          كل مدرب له بياناته المستقلة — بياناتك محفوظة على هذا الجهاز فقط
+          ملفاتك مشفرة، ولا تُرسل الملاحظات إلى GitHub أو أي خادم
         </p>
       </div>
     </div>

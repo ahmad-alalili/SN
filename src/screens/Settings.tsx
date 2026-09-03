@@ -6,6 +6,11 @@ import { useActiveTrainer, useAppearance, useToast, type AccentChoice, type Back
 import { fmtSize, fmtDate } from '../lib/media';
 import { saveAs } from '../lib/excel';
 import { statusOf } from '../lib/status';
+import { FileKey2, FolderSync, Save } from 'lucide-react';
+import {
+  linkPortableTrainer, pickPortableSaveHandle, saveLinkedTrainer,
+  supportsDirectPortableFiles
+} from '../db/portable';
 
 export default function Settings() {
   const t = useActiveTrainer()!;
@@ -15,6 +20,9 @@ export default function Settings() {
   const [busy, setBusy] = useState('');
   const [est, setEst] = useState<{ usage: number; quota: number } | null>(null);
   const [storagePersistent, setStoragePersistent] = useState<boolean | null>(null);
+  const [portablePassword, setPortablePassword] = useState('');
+  const [portablePasswordAgain, setPortablePasswordAgain] = useState('');
+  const portableLink = useLiveQuery(() => db.portableFiles.get(t.id), [t.id]);
 
   // قواعد حالة المتدرب
   const settings = useLiveQuery(() => loadSettings(t.id), [t.id]);
@@ -112,6 +120,45 @@ export default function Settings() {
     toast(granted
       ? 'تم تفعيل الحفظ الدائم للبيانات على هذا الجهاز'
       : 'المتصفح لم يمنح الحفظ الدائم. لا تحذف بيانات التصفح، وخذ نسخة احتياطية دورياً', granted ? 'ok' : 'err');
+  }
+
+  async function setupPortableFile() {
+    if (portablePassword.length < 6) {
+      toast('استخدم كلمة مرور من 6 أحرف على الأقل', 'err');
+      return;
+    }
+    if (portablePassword !== portablePasswordAgain) {
+      toast('كلمتا المرور غير متطابقتين', 'err');
+      return;
+    }
+    setBusy('portable');
+    try {
+      const handle = await pickPortableSaveHandle(t.name);
+      await linkPortableTrainer(t.id, t.name, portablePassword, handle);
+      const result = await saveLinkedTrainer(t.id, { userInitiated: true, downloadFallback: true });
+      setPortablePassword('');
+      setPortablePasswordAgain('');
+      toast(result === 'saved'
+        ? 'تم ربط ملف المدرب وتفعيل الحفظ التلقائي'
+        : 'تم إنشاء ملف المدرب المشفر؛ احفظه في مكان آمن');
+    } catch (cause) {
+      if ((cause as DOMException)?.name !== 'AbortError') {
+        console.error(cause);
+        toast('تعذر إنشاء ملف المدرب المحمول', 'err');
+      }
+    } finally { setBusy(''); }
+  }
+
+  async function savePortableNow() {
+    setBusy('portable-save');
+    try {
+      const result = await saveLinkedTrainer(t.id, { userInitiated: true, downloadFallback: true });
+      if (result === 'needs-permission') toast('اسمح بالوصول إلى الملف لإكمال الحفظ', 'err');
+      else toast(result === 'saved' ? 'تم تحديث ملف المدرب' : 'تم تنزيل أحدث ملف للمدرب');
+    } catch (cause) {
+      console.error(cause);
+      toast('تعذر حفظ ملف المدرب', 'err');
+    } finally { setBusy(''); }
   }
 
   return (
@@ -225,6 +272,49 @@ export default function Settings() {
         <span className="font-bold">📚 إدارة الفصول والمستويات</span>
         <span className="text-slate-400 text-sm">{stats?.studyTerms ?? 0} فصل ←</span>
       </button>
+
+      {/* ملف المدرب المحمول */}
+      <div className="card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <FileKey2 className="w-5 h-5 text-[var(--app-accent)]" />
+          <h2 className="font-bold">ملف المدرب المحمول</h2>
+        </div>
+        {portableLink ? (
+          <>
+            <div className="rounded-lg border border-white/20 bg-black/10 p-3 text-sm space-y-1">
+              <p className="font-semibold break-all">{portableLink.fileName}</p>
+              <p className="text-xs text-slate-500">
+                {portableLink.direct ? 'حفظ تلقائي مباشر' : 'حفظ يدوي متوافق مع iPhone والمتصفحات المقيدة'}
+              </p>
+              <p className={`text-xs font-semibold ${portableLink.dirty ? 'text-amber-500' : 'text-emerald-500'}`}>
+                {portableLink.dirty
+                  ? 'توجد تغييرات تحتاج إلى حفظ'
+                  : portableLink.lastSavedAt ? `آخر حفظ: ${fmtDate(portableLink.lastSavedAt)}` : 'الملف جاهز'}
+              </p>
+            </div>
+            <button className="btn-primary w-full" disabled={busy === 'portable-save'} onClick={savePortableNow}>
+              <Save className="w-5 h-5" /> {busy === 'portable-save' ? 'جارٍ الحفظ...' : 'حفظ أحدث نسخة الآن'}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500">
+              أنشئ ملفاً مشفراً تملكه أنت. {supportsDirectPortableFiles()
+                ? 'سيختار المتصفح مكانه ويحدثه تلقائياً.'
+                : 'يمكن حفظه في تطبيق الملفات أو iCloud وتحديثه يدوياً.'}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <input className="input" type="password" autoComplete="new-password" placeholder="كلمة مرور الملف"
+                value={portablePassword} onChange={e => setPortablePassword(e.target.value)} />
+              <input className="input" type="password" autoComplete="new-password" placeholder="تأكيد كلمة المرور"
+                value={portablePasswordAgain} onChange={e => setPortablePasswordAgain(e.target.value)} />
+            </div>
+            <button className="btn-primary w-full" disabled={busy === 'portable'} onClick={setupPortableFile}>
+              <FolderSync className="w-5 h-5" /> {busy === 'portable' ? 'جارٍ إنشاء الملف...' : 'إنشاء وربط ملف المدرب'}
+            </button>
+          </>
+        )}
+      </div>
 
       {/* النسخ الاحتياطي */}
       <div className="card p-4 space-y-3">
